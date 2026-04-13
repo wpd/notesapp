@@ -2,23 +2,31 @@
 
 ## 1. Overview
 
-A local-first desktop note-taking application for macOS, designed for **AI-assisted research and learning**. The user augments AI-generated content with reference material obtained elsewhere (PDFs, markdown documents) and their own thinking. The application supports rich markdown authoring (with LaTeX equations and Mermaid diagrams), real-time rendered preview with inline WYSIWYG editing and drawing tools, a reference document library (PDF and markdown), and one or more chat panels connected to an AI backend (initially Claude).
+A desktop note-taking application, designed for **AI-assisted research and learning**. The user augments AI-generated content with notes and reference material obtained elsewhere (PDFs, markdown, and other documents). The application supports arbitrary text file authoring and, for rich markdown documents (with LaTeX equations and Mermaid diagrams), real-time WYSIWYG editing and drawing tools.  The application also provides a reference document library (with built in rendering for PDF and markdown documents), and independent chat panels connected to an AI backend (initially Claude).
 
-All data — notes, reference documents, and AI conversation context — is stored in a **project data directory** on the local filesystem, entirely separate from the application installation. No cloud sync is required or assumed. Notes files are plain text and are intended to be managed in a git repository by the user outside this application.
+All data — notes, reference documents, and AI conversation context — is stored in a **project data directory** on the local filesystem, independent of the application installation. No cloud sync is required or assumed.  The user may elect to use `git` to manage persistence and revision control of the project files, but that is beyond the scope of this application.
 
-The application UI is a **native desktop window** powered by an embedded webview (Tauri). It is not accessed through a web browser.
+The application UI is a **native desktop window** powered by an embedded webview (Tauri). It is not accessed through a web browser, except for debugging and integration tests.
+
+A secondary purpose of this project is as a testbed for learning about and evaluating the use of Claude Code in order to develop a project such as this.  The end result is absolutely to be an application that can be installed on a target system, but along the way, it is anticipated that much will be learned about the use of Claude Code in specifying and developing an application such as this.
 
 ---
 
 ## 2. Application Architecture
 
-### 2.1 Platform
+### 2.1 Target Platform
 
-- **Target platform:** macOS (primary), with Linux/Windows portability desirable
+- **Target platform:** M1 chipset based macOS (primary), with Linux/Windows portability desirable
 - **Recommended framework:** [Tauri v2](https://tauri.app/) (Rust backend + web frontend)
   - Lighter than Electron; native OS integration; strong file-system access via Rust
   - The webview is embedded in a native window — users never navigate to a URL in their browser
   - Alternative: Electron if Tauri imposes too many constraints on canvas/drawing libraries
+
+#### 2.1.1 Development Platform
+
+The primary development platform for this application is an x86 Ubuntu 24.04 LTS Linux VM with Claude Code, Google Chrome,
+and the "Claude in Chrome" extension installed.  It is intended that Claude Code will perform most of the development, 
+debugging, and integration testing of the code in that environment.
 
 ### 2.2 Frontend Stack
 
@@ -65,6 +73,7 @@ The application is launched with a project directory as its working context. The
   notes/
     <filename>.md                  # markdown notes — named by the user
     <filename>.NNNN.drawing        # sidecar Excalidraw JSON, zero or more per note
+    <filename>.<ext>               # arbitrary text file notes, not rendered in WYSIWYG preview/edit pane
   references/
     <filename>.pdf                 # reference PDFs
     <filename>.md                  # reference markdown documents
@@ -77,7 +86,7 @@ The application is launched with a project directory as its working context. The
 
 **Launching:** the application is invoked with a path: `notesapp /path/to/project-dir`, or by opening the app and using the "Open Recent" / "Open..." menu. The macOS app bundle can be set as the default handler for `.notesapp` directory bookmarks, or simply launched via the terminal or Finder.
 
-**Notes on git compatibility:** The `notes/` and `references/` directories contain only plain text or binary files with no proprietary lock-in. The user is expected to manage these in a git repository. The `ai-context/` directory contains JSON files that are also git-friendly, giving a recoverable history of AI conversations.
+**Notes on git compatibility:** The `notes/` and `references/` directories contain only plain text or binary files with no proprietary lock-in. The user may elect to manage these in a git repository. The `ai-context/` directory contains JSON files that are also git-friendly, giving a recoverable history of AI conversations.
 
 ### 3.2 Note Format
 
@@ -131,7 +140,7 @@ The main window uses **[react-mosaic](https://github.com/nomcopter/react-mosaic)
 
 - Each **leaf node** is a pane (editor, preview, reference viewer, AI chat, etc.)
 - Each **internal node** is a split — either horizontal (side by side) or vertical (stacked)
-- Any pane can be split further into two by dragging its title bar or using a keyboard shortcut
+- Any pane can be split further into two via a UI widget or using a keyboard shortcut
 
 This means there is no hardcoded grid. The default layout on first launch is a suggestion; the user can rearrange freely. Example alternative layouts:
 
@@ -139,7 +148,7 @@ This means there is no hardcoded grid. The default layout on first launch is a s
 Default (3-column + bottom AI bar):
 
   [ Editor ] [ Preview ] [ Reference ]
-  [        AI Chat (full width)       ]
+  [       AI Chat (full width)       ]
 
 2×2 research layout:
 
@@ -149,17 +158,17 @@ Default (3-column + bottom AI bar):
 Reference-heavy layout:
 
   [ Editor ] [ Reference (PDF) ] [ Reference (PDF) ]
-  [ Preview                    ] [ AI Chat          ]
+  [ Preview                    ] [ AI Chat         ]
 ```
 
-Each pane has a title bar showing its type and (for notes) the filename. The title bar has:
+Each pane has a title bar showing its type and the filename. The title bar has:
 - A **close** button (removes the tile; its content is not deleted)
 - A **split horizontal / split vertical** button to divide the tile in two
 - A **maximize** button to temporarily expand the tile to full window (click again to restore)
 
 **Pane types** that can be placed in any tile:
-- `Editor` — markdown source for a specific note (identified by filename in title bar)
-- `Preview` — rendered view of a specific note (can be a different note than the open Editor)
+- `Editor` — Text Editor
+- `Preview` — WYSIWYG rendered view/editor of a specific Markdown note
 - `Reference` — PDF or markdown reference document viewer
 - `AI Chat` — an AI chat session
 
@@ -169,41 +178,50 @@ Multiple tiles of the same type can be open simultaneously. This includes multip
 
 **Layout persistence:** `.notesapp/layout.json` is written immediately whenever the user makes a structural layout change (splitting a tile, closing a tile, moving a tile, or resizing a split boundary). Maximize/unmaximize is a transient view state and does not trigger a save. On next open, the layout is restored exactly. If a file referenced by a tile has been renamed or deleted outside the application, that tile displays a `⚠ File not found: <filename>` message with an option to locate the file or close the tile.
 
-**Scroll position persistence:** on clean exit (normal quit, not crash), the scroll position of each tile is written into `layout.json` alongside the layout tree. On restore, each tile is scrolled to its saved position after the content loads. Scroll positions are not saved on crash — the tile reopens at the top.
+**Scroll position persistence:** on clean exit (normal quit, not crash), the scroll position of each tile is written into `layout.json` alongside the layout tree. On restore, each tile is scrolled to its saved position after the content loads. Scroll positions are not saved on crash — the tile reopens at the last saved position.
 
 ### 4.1 Pane and Layout Keyboard Shortcuts
 
 All pane operations are available via keyboard. Suggested default bindings (user-configurable):
 
-| Action | Default Shortcut |
+The application provides a configuration item for selecting current state-of-the-art common usage key bindings as well as Emacs key bindings.  Where a feature is specific to this application and the Emacs binding listed below does not compete with the common usage binding, the Emacs binding is selected by default.  The user has the option of selecting Emacs key bindings or common usage bindings.
+
+| Action | Emacs Style Keybinding |
 |---|---|
 | Focus next pane (cycle) | `C-x o` (Emacs-style) |
 | Focus previous pane | `C-x O` |
-| Split current pane horizontally | `C-x 2` |
-| Split current pane vertically | `C-x 3` |
+| Split current pane horizontally | `C-x h` |
+| Split current pane vertically | `C-x v` |
 | Close current pane tile | `C-x 0` or `C-x w` |
 | Maximize / restore current pane | `C-x z` |
 | Switch buffer in focused pane | `C-x b` |
-| Open note in new tile | `C-x 4 f` |
-| Open reference in new tile | `C-x 4 r` |
-| Open new AI chat tile | `C-x 4 a` |
+| Open note in current tile | `C-x n n` |
+| Open reference in current tile | `C-x n r` |
+| Open new AI chat tile | `C-x n c` |
 | Save current note | `C-x C-s` |
 | Open note by name | `C-x C-f` |
 | Open reference by name | `C-x C-r` |
-| Toggle activity sidebar | `Cmd+B` |
-| Global project search | `Cmd+Shift+F` |
-| Focus pane N (1–9) | `Ctrl+N` |
-| Increase font size in markup panes; increase zoom in PDF panes | `Cmd+=` |
-| Decrease font size in markup panes; decrease zoom in PDF panes | `Cmd+-` |
-| Reset font size (focused pane) | `Cmd+0` |
+| Toggle activity sidebar | `Cmd+B` (`Ctrl+Shift+B` on Windows/Linux) |
+| Global project search | `Ctrl/Cmd+Shift+F` |
+| Focus pane `N` (1–9) | `C-x N` |
+| Increase rendered font size in text and markup panes; increase zoom in PDF panes | `Ctrl/Cmd+=` |
+| Decrease rendered font size in text and markup panes; decrease zoom in PDF panes | `Ctrl/Cmd+-` |
+| Reset font size (focused pane) | `Ctrl/Cmd+0` |
+| Cursor movement matches Emacs bindings | `C-a`, `C-e` `C-b`, `C-f`, `C-p`, `C-n`, `M-<`, `M->`, etc... |
+| Emacs style Incremental and Regexp incremental search support and key bindings | `C-s`, `C-r`, `M-C-s`, `M-C-r`, `C-w` (while searching) |
+| Emacs style Query Replace and Query Replace regexp | `M-%`, `M-C-%` |
+| Emacs style use of ESC as an alternative to the META key ||
 
-The `C-x` prefix family is intentionally consistent with Emacs window/buffer commands. `Cmd+` shortcuts follow macOS conventions and are available even when focus is outside the editor.
+
+The `C-x` prefix family is intentionally consistent with Emacs window/buffer commands.  In the MacOS version, `Cmd+` shortcuts follow macOS conventions and are available even when focus is outside the editor.
+
+The application provides current state-of-the art common usage top level menu bar items, for example for file open, file close, project open, project close, copy, paste, select all, search, etc...
 
 **Pane numbering for `Ctrl+N`:** tiles are numbered 1–9 in reading order (left to right, top to bottom) based on the current layout. A small number badge is shown in each tile's title bar while `Ctrl` is held, so the user can see which number corresponds to which tile before releasing the key.
 
 ### 4.2 Activity Sidebar
 
-A collapsible sidebar on the left edge of the window (toggled with `Cmd+B`, modeled on VS Code) provides:
+A collapsible sidebar on the left edge of the window (toggled with `Ctrl/Cmd+B`, modeled on VS Code) provides:
 
 - **Explorer** — flat list of all notes in the project, sorted by modification time (or alphabetically; user-configurable). The sidebar is for browsing only — clicking a note does not open it. To load a file into a pane, use `C-x b` (buffer switcher) or drag a file from the sidebar onto any pane.
 - **Search** — full-text search across all notes and references (see §5.5). Results grouped by file with surrounding context lines, like VS Code's global search.
@@ -216,13 +234,24 @@ Each section in the sidebar is collapsible. The sidebar remembers which sections
 
 ### 4.3 Visual Theme and Fonts
 
-**Colors:** The default color scheme is modeled on the **Claude web client**: dark background, warm off-white text, muted sidebar surfaces, and the characteristic salmon/amber accent color used for AI response content. Light mode and system-adaptive mode are also available via `config.toml`.
+**Colors:** The default color scheme is modeled on the **Claude web client**: warm, earthy tones centered on a coral/orange-red, complemented by neutral backgrounds.
+
+**Key colors:**
+- **Primary accent:** Coral/terracotta orange-red — roughly `#CC785C` or similar warm reddish-orange, used for key UI highlights
+- **Backgrounds:** Off-white / warm light gray (#F5F0EB range) for the main interface, giving it a warm rather than clinical feel
+- **Dark surfaces:** Deep charcoal/near-black (`#1A1A1A` or similar) for dark mode and the sidebar
+- **Text:** Near-black for primary text, medium grays for secondary/muted text
+- **Buttons/interactive elements:** The coral accent color for primary CTAs
+
+Overall aesthetic: Warm, minimal, and human-feeling — deliberately avoiding the cold blues common in tech/AI products. The palette leans into natural, organic tones to feel approachable rather than robotic.
+
+Dark mode and system-adaptive mode are also available via `config.toml`.
 
 **Fonts:**
 - **Editor pane:** monospaced font. Default: [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (clean, designed for code, includes good ligature support); falls back to `monospace` system font.
-- **Preview / rendered content:** [Inter](https://rsms.me/inter/) for body text (current UX best practice for on-screen reading); falls back to the system UI font (`-apple-system`). Code blocks within rendered content use the same monospace as the editor.
+- **Preview / rendered content:** [Inter](https://rsms.me/inter/) for body text (current UX best practice for on-screen reading); falls back to the system UI font. Code blocks within rendered content use the same monospace as the editor.
 - **AI chat pane:** same as Preview (Inter / system UI).
-- **Font sizes:** `Cmd+=` / `Cmd+-` / `Cmd+0` adjust the font size of the **currently focused pane** only. Each pane independently tracks its current font size, starting from the project defaults defined in `project.toml`. When a project is opened, all panes start at the default sizes; per-pane size adjustments are not persisted across sessions.
+- **Font sizes:** `Ctrl/Cmd+=` / `Ctrl/Cmd+-` / `Ctrl/Cmd+0` adjust the font size of the **currently focused pane** only. Each pane independently tracks its current font size, starting from the project defaults defined in `project.toml`. When a project is opened, all panes start at the default sizes; per-pane size adjustments are not persisted across sessions.
 
 ---
 
@@ -235,7 +264,7 @@ Each section in the sidebar is collapsible. The sidebar remembers which sections
 **Core features:**
 - Syntax highlighting for Markdown, LaTeX (`$...$` / `$$...$$`), and Mermaid fenced code blocks
 - Line numbers, word wrap toggle
-- Auto-closing brackets and delimiters
+- Auto-closing brackets and delimiters are **NOT** supported, but highlighting matching braces is supported
 - Toolbar shortcuts for common markdown constructs (bold, italic, heading, link, image, table, code block, LaTeX block, Mermaid block)
 - Find/replace with regex support
 - Live word and character count
@@ -293,7 +322,6 @@ The Yjs document is serialized to the `.tmp` markdown file on disk every 30s in 
 
 **Pasting content from the AI Chat Pane:**
 - AI responses are rendered markdown. The user can select any portion of an AI response (including rich formatted content — headers, lists, code blocks, tables) and paste it into the Preview Pane, preserving formatting via the Tiptap layer, which round-trips it to the Editor Pane as clean markdown source.
-- Alternatively, "Insert into note" buttons on AI responses append the full response as markdown to the current note.
 
 **Drawing blocks:**
 
@@ -305,7 +333,7 @@ my-diagram.drawing
 ```
 ````
 
-In the Preview Pane (and Editor Pane), this renders as an embedded Excalidraw canvas at that position in the document. The canvas has a fixed height (user-resizable by dragging its bottom edge).
+In the Preview Pane, this renders as an embedded Excalidraw canvas at that position in the document. The canvas has a fixed height (user-resizable by dragging its bottom edge).
 
 - Double-click the rendered drawing to enter **edit mode**: the full Excalidraw toolbar appears (freehand pen, straight line, arrow, rectangle, ellipse, text label, eraser, color/stroke picker)
 - Click outside or press `Escape` to exit edit mode; the canvas returns to a static rendered view
@@ -324,7 +352,7 @@ In the Preview Pane (and Editor Pane), this renders as an embedded Excalidraw ca
 
 **Features:**
 
-**File selection:** The Reference tile title bar shows the name of the currently displayed file and a `▾` dropdown button. Activating the dropdown (mouse click or `C-x C-r` when the tile is focused) opens a **fuzzy file picker** (same style as VS Code's `Cmd+P`): a text input with a live-filtered list of all files in `references/`, navigable by arrow keys, activated with `Enter`. Typing filters by filename. The picker is dismissed with `Escape`. Drag-and-drop a file from Finder into the tile to open it directly.
+**File selection:** The Reference tile title bar shows the name of the currently displayed file and a `▾` dropdown button. Activating the dropdown (mouse click or `C-x n r` when the tile is focused) opens a **fuzzy file picker** (same style as VS Code's `Cmd+P`): a text input with a live-filtered list of all files in `references/`, navigable by arrow keys, activated with `Enter`. Typing filters by filename. The picker is dismissed with `Escape`. Drag-and-drop a file from Finder into the tile to open it directly.
 
 - Drag-and-drop into the tile (or the activity sidebar References section) to import new files into `references/`
 - **PDF viewer (PDF.js):** keyboard page navigation (`n`/`p` or `PageDown`/`PageUp`), zoom (`Cmd+=`/`Cmd+-`), thumbnail strip toggle, full-text search within the document (`Cmd+F`), text selection and copy
@@ -388,10 +416,10 @@ Claude's context limit is currently 200,000 tokens (~150,000 words), which is la
 - Full history is always preserved in the JSON file on disk regardless of what is sent to the API
 
 **Multiple AI panes:**
-- "Split AI pane" button opens a second AI panel side-by-side (e.g., Claude Sonnet vs Opus, or two different sessions)
+- "Split pane" buttons and keyboard shortcus open a second AI pane side-by-side (e.g., Claude Sonnet vs Opus, or two different sessions)
 
 **Actions on AI responses:**
-- "Insert into note" button: appends full response (as markdown) to the current note
+- "Insert into note" button: appends full response (as markdown) to the current note **NOTE FOR REVIEW: What do we mean by "current note"?  We need to add a discussion about that to this document someplace.***
 - "Copy markdown" button: copies raw markdown source
 - "Copy formatted" button: copies rich text suitable for pasting into the Preview Pane with formatting preserved
 - Regenerate last response
@@ -428,15 +456,17 @@ The application is launched with a directory as its argument — either from the
 
 **Subsequent launches:**
 - Recent projects are listed on a startup screen (if no directory argument is given) and in `File → Open Recent`, stored in `~/.config/notesapp/config.toml`
+  - Recent projects can be deleted from the list by clicking on a muted "x" icon shown to the right of the project name.
 - The last-used layout is restored from `.notesapp/layout.json`
 
 ### 6.2 Ongoing Note and Project Management
 
-- **Note naming:** the user provides the filename when creating a new note (`File → New Note` or `C-x C-n`); the app never auto-generates filenames. Spaces are allowed (stored as-is). The `.md` extension is added automatically if omitted. The `title` front-matter field defaults to the filename but can be edited independently.
+- **Note naming:** the user provides the filename when creating a new note (`File → New Note` or `C-x C-n`); the app never auto-generates filenames. Spaces are allowed (stored as-is). The `.md` extension is added automatically if no other extension is specified. The `title` front-matter field defaults to the filename but can be edited independently.
 - **Note management:** rename, delete, reorder in the activity sidebar (sorted by modification time or alphabetically; user preference)
 - **Tags:** added to front-matter; browsable in the activity sidebar Tags section
 - **Project settings:** `File → Project Settings` opens a panel for AI backend, default model, system prompt, and theme overrides
 - **Multiple projects simultaneously:** launch additional instances (`open -na NotesApp --args /path/to/project` in terminal, or from Finder)
+- **Close Project:** The current project can be closed and the application returns to the default startup screen.
 
 ---
 
@@ -479,7 +509,7 @@ Additional backends (local Ollama, OpenAI-compatible APIs) can be added by imple
 
 ## 8. Configuration
 
-`~/.config/notesapp/config.toml` (global, not inside any project, never committed to git):
+`~/.config/notesapp/config.toml` (global, not inside any project, never committed to git), editable via a configuration editor built into the application or outside the application (when no instanced of the application are running) via a standard text editor:
 
 ```toml
 [general]
@@ -555,203 +585,7 @@ Specific requirements flowing from these:
 
 ## 10. Phased Implementation Roadmap
 
-Each phase is intended as a self-contained Claude Code session with its own focused prompt. Later phases build on earlier ones but do not require revisiting them. The spec sections relevant to each phase are listed so the implementer can read only what they need.
-
----
-
-### Phase 1 — Tauri Shell, Layout Engine, and File I/O
-
-**Goal:** A running desktop application with a working tiling layout, a file-backed note list, and persistent layout state. No rendering, no AI.
-
-**Deliverables:**
-- Tauri v2 project scaffold (Rust backend + React/TypeScript frontend)
-- react-mosaic tiling layout with all four tile types as labeled placeholders
-- Activity sidebar (Explorer and References sections; Tags and Search stubbed)
-- File I/O: read/write `notes/*.md` and `references/*` via Tauri commands
-- `layout.json` persistence: save on structural change, restore on open, "file not found" error cards
-- Scroll position save on clean exit / restore on open
-- `Ctrl+N` pane focus with number badges; `C-x o/O/b/2/3/0/w/z` layout shortcuts
-- First-launch detection and new-project wizard (name, description only — skip AI setup for now)
-- `~/.config/notesapp/config.toml` and `.notesapp/project.toml` read/write
-- `Cmd+B` sidebar toggle
-
-**Spec sections:** §2, §3.1, §4.0, §4.1, §4.2, §6.1 (wizard only), §6.2 (note/file management), §8, §9.1 (autosave skeleton — `.tmp` write, crash recovery prompt)
-
-**Not in this phase:** any pane content rendering, Emacs keybindings, AI, PDF, Yjs, fonts beyond defaults
-
----
-
-### Phase 2 — Editor Pane (CodeMirror 6 + Emacs)
-
-**Goal:** A fully functional markdown source editor with all required Emacs behaviors.
-
-**Deliverables:**
-- CodeMirror 6 in the Editor tile, loading and displaying `.md` file content
-- Syntax highlighting: Markdown, LaTeX (`$...$`, `$$...$$`), Mermaid fenced blocks, drawing fenced blocks
-- Emacs keybinding layer: all motions, kill ring, mark/region, `C-x` prefix commands, `M-<`/`M->`
-- Keyboard macros: `C-x ( ) e` with `C-u N` repeat
-- Rectangle operations: `C-x r k/y/t/o`
-- TAB disambiguation (priority rules): heading fold, table cell advance, code block literal tab, indent elsewhere
-- Section folding: TAB cycles FOLDED/CHILDREN/SUBTREE; S-TAB toggles all; ▶/▼ indicators
-- Org-mode table editing: TAB/S-TAB navigation, auto-reformat, `M-RET`/`M-left/right/up/down`
-- `C-x C-s` explicit save (writes `.md`); autosave to `.tmp` every 30s and on focus loss
-- Find/replace with regex (`C-s`, `C-r`, `C-M-s`)
-- Line numbers, word wrap toggle, word/character count
-- OS native spellcheck enabled; suppressed in code/LaTeX/Mermaid blocks
-- `Cmd+=/-/0` font size adjustment for focused Editor tile
-
-**Spec sections:** §5.1, §9.1 (autosave)
-
-**Not in this phase:** Yjs sync, preview rendering, drawing blocks
-
----
-
-### Phase 3 — Preview Pane (Read-Only Rendering)
-
-**Goal:** A rendered view of the current note that updates as the editor changes, with scroll sync.
-
-**Deliverables:**
-- Preview tile rendering markdown via remark/rehype pipeline
-- KaTeX rendering for inline (`$...$`) and display (`$$...$$`) LaTeX
-- Mermaid.js rendering for fenced `mermaid` blocks
-- Drawing blocks (```` ```drawing ```` ) rendered as static placeholder canvas (Excalidraw not yet interactive)
-- Debounced re-render (~150ms) on editor keystrokes
-- Scroll sync between Editor and Preview tiles for the same note
-- Inline render error messages for malformed KaTeX or Mermaid (no crashes)
-- `Cmd+=/-/0` font size adjustment for focused Preview tile
-
-**Spec sections:** §5.2 (rendering pipeline only), §4.3 (fonts)
-
-**Not in this phase:** Yjs CRDT, WYSIWYG editing in preview, Excalidraw interaction
-
----
-
-### Phase 4 — Yjs CRDT Bridge (Bidirectional Sync)
-
-**Goal:** Editor and Preview tiles are fully bidirectional — editing in either immediately updates the other.
-
-**Deliverables:**
-- Yjs document per open note, shared across all tiles for that note
-- `y-codemirror.next` binding: `Y.Text` ↔ CodeMirror state
-- Bridge layer: `Y.Text` changes trigger remark parse → ProseMirror node tree update; Tiptap edits serialize back to markdown → `Y.Text`
-- `y-prosemirror` binding: `Y.XmlFragment` ↔ Tiptap state
-- Tiptap WYSIWYG formatting toolbar active: bold, italic, underline, strikethrough, inline code, headings, blockquote, lists, task list, HR, link
-- Table editing in Tiptap (click-to-edit cells, add/remove rows/columns)
-- Multiple tiles for the same note stay in sync
-- Paste from AI Chat Pane into Preview preserves formatting (via Tiptap clipboard handler)
-- "Insert into note" action from AI Chat Pane (append markdown to `Y.Text`)
-
-**Spec sections:** §5.2 (WYSIWYG and Yjs sections), §5.4 (Insert into note / Copy formatted)
-
-**Not in this phase:** Excalidraw drawing interaction (drawing blocks remain static renders)
-
----
-
-### Phase 5 — AI Chat Pane (Basic Chat)
-
-**Goal:** Working AI chat with session management, context controls, and context window tracking. No tool use yet.
-
-**Deliverables:**
-- AI Chat tile: message history, streaming input, markdown rendering of responses
-- Claude API integration via Tauri Rust backend (streaming via `reqwest`)
-- macOS Keychain API key storage; `pass` alternative; plaintext fallback with warning
-- New-project wizard: add API key and model selection steps
-- Session management: create/rename/switch sessions; UUID v4 session IDs; name stored in JSON
-- Tab bar for switching sessions within a tile
-- Context usage bar (`▓▓░░ 62% · 124k / 200k tokens`); 75% warning; 90% Summarize / Archive actions
-- Manual context controls: "Include current note", "Include selection", drag-and-drop attachment
-- Response actions: "Insert into note", "Copy markdown", "Copy formatted", Regenerate, Edit+rerun
-- Model selector and temperature/max-tokens controls in project settings
-- System prompt editing (`ai-context/system-prompt.md`)
-- Raw context JSON viewer
-
-**Spec sections:** §5.4, §7.1, §8 (AI config), §6.1 (wizard AI steps)
-
-**Not in this phase:** AI tool use (search/read project files)
-
----
-
-### Phase 6 — AI Tool Use (Project Search and Retrieval)
-
-**Goal:** The AI can autonomously search and read notes and references in the project.
-
-**Deliverables:**
-- Tantivy full-text search index built in Rust backend, indexing all `notes/*.md` on open and on file change
-- PDF text extraction (via `pdfium` or `lopdf`) feeding Tantivy index for `references/*.pdf`
-- Tauri commands exposing: `search_notes`, `read_note`, `search_references`, `read_reference`, `list_notes`, `list_references`
-- Tool definitions registered with every Claude API call
-- Tool call / tool result round-trip handled transparently in the chat backend
-- Activity sidebar Search section: full-text search UI with results grouped by file (VS Code style)
-- `Cmd+Shift+F` global search shortcut
-
-**Spec sections:** §2.3, §4.2 (search), §5.4 (AI tool table)
-
----
-
-### Phase 7 — Reference Pane (PDF + Markdown Viewer)
-
-**Goal:** Fully functional reference document viewer with annotation and extraction.
-
-**Deliverables:**
-- Reference tile with fuzzy file picker in title bar (`C-x C-r` or `▾` dropdown)
-- PDF.js viewer: page navigation (`n`/`p`, PageDown/Up), thumbnail strip, zoom (`Cmd+=/-`), in-document search (`Cmd+F`), text selection
-- Markdown reference viewer: read-only, same remark/rehype/KaTeX/Mermaid pipeline as Preview
-- Text selection → right-click → "Copy": smart paste behavior (blockquote+citation into Editor/Preview; plain text into AI Chat)
-- PDF highlight annotations stored in `<filename>.pdf.annotations` sidecar JSON; rendered as overlays
-- Drag-and-drop file import into `references/`
-- Activity sidebar References section populated and functional
-
-**Spec sections:** §5.3, §4.2 (References sidebar section)
-
----
-
-### Phase 8 — Drawing Blocks (Excalidraw)
-
-**Goal:** Interactive Excalidraw canvases embedded as block elements in notes.
-
-**Deliverables:**
-- ```` ```drawing ```` fenced blocks render as live Excalidraw canvases in Preview and Editor tiles
-- Double-click to enter edit mode; Escape to exit
-- Drawing content stored as `notes/<note-basename>.NNNN.drawing` (JSON); auto-numbered per note
-- `C-c d` / toolbar button inserts a new drawing block at cursor; file created automatically
-- Canvas height user-resizable by dragging bottom edge
-- Drawing renders as static SVG in read/display mode
-
-**Spec sections:** §5.2 (Drawing blocks), §3.1 (`.drawing` files)
-
----
-
-### Phase 9 — Export
-
-**Goal:** Notes can be exported as standalone documents for sharing.
-
-**Deliverables:**
-- Export to PDF (via headless Chromium print or `wkhtmltopdf`)
-- Export to standalone HTML (self-contained: inline CSS, base64 images)
-- Export to LaTeX (`.tex`): math pass-through, Mermaid diagrams as PDF/SVG figures via `\includegraphics`, drawings embedded as SVG/PDF
-- Export to plain markdown (strip front-matter or keep, user option)
-- "Copy rendered HTML" to clipboard
-
-**Spec sections:** §5.2 (Export section)
-
----
-
-### Phase 10 — Polish and Hardening
-
-**Goal:** Production-quality error handling, onboarding, and UX finishing touches.
-
-**Deliverables:**
-- React Error Boundaries on all tiles with "Something went wrong — click to reload" card
-- All Rust `Result` types handled; no `unwrap()` on user-facing paths; background thread panics caught and surfaced
-- Crash recovery: `.tmp` file detection on open, recovery dialog
-- LanguageTool optional integration (check for `languagetool-server` on `$PATH`)
-- Complete first-launch wizard (all steps including API key, model, system prompt)
-- `Cmd+=/-/0` font size per pane, reset to `project.toml` defaults on project open
-- Per-pane number badge overlay while `Ctrl` is held
-- Full `~/.config/notesapp/config.toml` and `project.toml` settings UI (not just hand-editing)
-- macOS app bundle packaging: code signing, notarization, `.dmg` installer
-
-**Spec sections:** §6.1, §8, §9.1, §4.1 (Ctrl+N badges), §4.3 (fonts)
+To be jointly developed with Claude.
 
 ---
 
@@ -762,37 +596,3 @@ Each phase is intended as a self-contained Claude Code session with its own focu
 - Cloud sync — the filesystem layout is flat and git-friendly; users sync manually if desired
 - Built-in version history UI — users manage this with git externally
 - Plugin marketplace
-
----
-
-## 12. Resolved Design Decisions
-
-| Question | Decision | Rationale |
-|---|---|---|
-| Drawing storage | Sidecar `.drawing` file; never embedded in the `.md` source | Keeps markdown clean and portable; drawings embedded during export |
-| Export format | Notes export to PDF, HTML, LaTeX, and plain markdown; drawings embedded as SVG/PNG in output | Enables sharing as a single file without requiring the app |
-| WYSIWYG ↔ source fidelity | Seamlessly bidirectional; every WYSIWYG edit immediately updates the source and vice versa | User requires a single source of truth; no mode-switch friction |
-| LaTeX editing in WYSIWYG mode | Always edit LaTeX in the source (Editor Pane); Preview re-renders after each change | Avoids complexity of in-place equation editors; source pane is always open |
-| AI context window management | Manual "prune history" button; full history preserved in JSON file on disk | User will manage state via git externally; can recover from any truncation decision |
-| PDF annotation storage | Sidecar JSON files; PDF files never modified | Avoids any risk of PDF corruption; annotations are git-diffable |
-| Multi-project support | One project per application instance; launch multiple instances for multiple projects | Simpler architecture; user can arrange instances side-by-side with the OS window manager |
-| Pane layout | react-mosaic binary-tree tiling; no fixed grid; user arranges arbitrarily | User needs 2×2, 3-column, and other layouts; no hardcoded assumption about what panes exist |
-| Note filenames | User-named; application never auto-generates filenames | Notes are managed in git; user needs predictable, meaningful filenames |
-| API key storage | macOS Keychain by default; `pass` as documented alternative; plaintext with warning as fallback | Keys must not appear in git-tracked files; OS keychain is the standard macOS secure storage |
-| Context window management | Token usage bar; explicit Summarize or Archive actions at 90%; full history always preserved on disk | User manages state in git; no silent truncation; transparency over automation |
-| TAB key behavior | Context-sensitive: heading line → fold/unfold; table cell → advance cell; code block → literal tab; elsewhere → indent to match previous line | Three distinct Emacs/Org-mode behaviors needed; priority rules resolve conflicts |
-| WYSIWYG sync mechanism | Yjs CRDT; `Y.Text` (markdown) is source of truth; `Y.XmlFragment` (Tiptap) derived via bridge; Tiptap edits serialized back to markdown | Correctness preferred over simplicity; `Y.Text` and `Y.XmlFragment` are different types requiring an explicit translation layer |
-| Drawing model | Block-level elements between paragraphs (fenced ` ```drawing ``` ` block); not a floating overlay | Drawings are discrete blocks, not annotations on text; no reflow/anchor problems |
-| Reference tile file selection | Fuzzy file picker in tile title bar (keyboard-activatable, arrow-key navigable); no persistent sidebar | Sidebar wastes space in narrow tiles; fuzzy picker is faster for keyboard users |
-| Layout persistence | Written to `.notesapp/layout.json` on every structural change; maximize/unmaximize not saved; scroll positions saved on clean exit | Saves deliberate arrangements immediately; transient full-screen state not persisted; scroll state only reliable on clean exit |
-| AI session ID | UUID v4 generated by the app; human-readable name stored inside the JSON file | Session identity is an app concept, not provided by the AI backend; UUIDs are collision-free and require no coordination |
-| First launch / project setup | App detects absence of `.notesapp/project.toml` and offers setup wizard in-place | User launches app from their project directory; no separate "data root" needed |
-| Autosave target | Autosave writes to `<file>.tmp` only; `.md` file updated only on explicit save | User wants the `.md` file to reflect deliberate saves; `.tmp` provides crash safety without surprise edits |
-| Error handling | No crashes on user error; per-tile React Error Boundaries; inline AI error messages | Protecting text data is the highest priority; failures must be visible and localised |
-| Fonts | Defaults (editor: JetBrains Mono 14px; preview: Inter 16px) stored in `project.toml`; font size adjustments apply to focused pane only and reset on project open | Per-project defaults make sense; per-pane transient sizing avoids global disruption |
-| Pane focus shortcuts | `Ctrl+N` (1–9) focuses tile N in reading order; number badges shown while Ctrl is held | Fast keyboard navigation without needing to cycle through all panes |
-| Spellcheck | OS native spellcheck by default; optional LanguageTool (local) for grammar; suppressed in code/LaTeX/Mermaid blocks | Spelling help in prose; no false positives inside technical content |
-
-## 13. Additional thoughts and features to be considered for later
-- Mechanism for editing the global configuration data stored in `~/.config/notesapp/config.toml`.
-- Change kaybondings so that `C-x h` splits a pane horizontally, `C-x v` spits a pane vertically, and `C-x N` is used to switch to pane number `N` instead of `C-N`.
