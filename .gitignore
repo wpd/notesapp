@@ -5,11 +5,15 @@
 /src-tauri/gen/
 *.tsbuildinfo
 
-# Generated declaration files emitted by tsc composite builds
+# Generated files emitted by tsc composite builds
 /vitest.config.d.ts
+/vitest.config.js
 /tailwind.config.d.ts
+/tailwind.config.js
 /vite.config.d.ts
+/vite.config.js
 /wdio.conf.d.ts
+/wdio.conf.js
 
 # Node
 /node_modules/
