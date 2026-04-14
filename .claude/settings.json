@@ -1,0 +1,43 @@
+// .claude/settings.json
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(xvfb-run:*)",
+      "Bash(git:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "Bash(touch:*)",
+      "Bash(echo:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(rustc:*)",
+      "Bash(rustfmt:*)",
+      "Bash(clippy-driver:*)",
+      "Bash(wdio:*)",
+      "Bash(vitest:*)",
+      "Bash(tsc:*)",
+      "Bash(python3:*)",
+      "Bash(fc-cache:*)",
+      "Bash(unzip:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(ps:*)",
+      "Bash(env:*)",
+      "Bash(which:*)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)"
+    ]
+  }
+}
