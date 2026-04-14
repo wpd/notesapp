@@ -48,6 +48,7 @@ sudo apt update && sudo apt install -y \
   libjavascriptcoregtk-4.1-dev \
   xvfb \
   x11-utils \
+  webkit2gtk-driver \
   ca-certificates \
   gnupg \
   lsb-release
@@ -57,6 +58,8 @@ sudo apt update && sudo apt install -y \
 > - `libwebkit2gtk-4.1-dev` and related GTK/WebKit packages: required by Tauri v2 on Linux
 > - `xvfb`: virtual framebuffer — required for headless E2E test runs
 > - `x11-utils`: provides `xdpyinfo` and other display diagnostic tools
+> - `webkit2gtk-driver`: provides the `WebKitWebDriver` binary — required by `tauri-driver`
+>   for E2E tests on Linux; without it `npm run test:e2e` skips with a warning
 > - `build-essential`: C/C++ toolchain required by some Rust crates and Node native addons
 
 ### 3.2 Rust
@@ -344,6 +347,7 @@ You should not need to manage Xvfb manually.
 | npm | 10 | bundled with Node 20 |
 | Python 3 | 3.10 | apt (system) |
 | libwebkit2gtk | 4.1 | apt |
+| webkit2gtk-driver | (matches libwebkit2gtk) | apt — **required for E2E tests** |
 | Xvfb | any | apt |
 | Chrome | any recent | pre-installed |
 | Claude Code | latest | pre-installed |
@@ -385,6 +389,7 @@ node --version
 npm --version
 python3 --version
 xvfb-run echo "Xvfb OK"
+which WebKitWebDriver && WebKitWebDriver --version || echo "WARNING: webkit2gtk-driver not installed — E2E tests will skip"
 
 echo ""
 echo "=== Environment ready ==="
