@@ -28,6 +28,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Scratch / diagnostic scripts
+/scripts/probe-inspector.mjs
+
 # Logs
 npm-debug.log*
 
