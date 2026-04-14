@@ -3,6 +3,13 @@
 /target/
 /src-tauri/target/
 /src-tauri/gen/
+*.tsbuildinfo
+
+# Generated declaration files emitted by tsc composite builds
+/vitest.config.d.ts
+/tailwind.config.d.ts
+/vite.config.d.ts
+/wdio.conf.d.ts
 
 # Node
 /node_modules/

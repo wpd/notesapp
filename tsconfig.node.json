@@ -5,12 +5,13 @@
     "module": "ESNext",
     "skipLibCheck": true,
 
+    /* Required for project references */
+    "composite": true,
+
     /* Bundler mode */
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "noEmit": true,
 
     /* Strict */
     "strict": true,

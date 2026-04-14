@@ -37,7 +37,9 @@ if (!findWebKitWebDriver()) {
 }
 
 // 2. Check for the compiled app binary.
-const appBinary = join(projectRoot, "src-tauri", "target", "release", "notesapp");
+// Cargo workspace root is notesapp/, so the binary lands in target/release/
+// (not src-tauri/target/release/).
+const appBinary = join(projectRoot, "target", "release", "notesapp");
 if (!existsSync(appBinary)) {
   console.warn("");
   console.warn("⚠️  E2E TESTS SKIPPED — Release binary not found at:");
