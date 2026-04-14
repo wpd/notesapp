@@ -1,0 +1,103 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 NotesApp Contributors */
+/* Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude */
+
+/* ------------------------------------------------------------------ */
+/* @font-face declarations — bundled fonts only, never system fonts    */
+/* ------------------------------------------------------------------ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ------------------------------------------------------------------ */
+/* Design tokens                                                        */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Accent — coral/terracotta */
+  --color-accent:        #CC785C;
+  --color-accent-hover:  #B8674D;
+  --color-accent-muted:  #E8C4B0;
+
+  /* Backgrounds */
+  --color-bg-primary:    #F5F0EB;
+  --color-bg-secondary:  #EDE8E2;
+  --color-bg-overlay:    #FFFFFF;
+
+  /* Dark surfaces */
+  --color-surface-dark:  #1A1A1A;
+  --color-surface-mid:   #2C2C2C;
+
+  /* Text */
+  --color-text-primary:  #1C1917;
+  --color-text-secondary:#6B6560;
+  --color-text-disabled: #A8A29E;
+
+  /* Borders */
+  --color-border:        #D9D3CC;
+  --color-border-focus:  #CC785C;
+
+  /* Semantic */
+  --color-error:         #DC2626;
+  --color-warning:       #D97706;
+  --color-success:       #16A34A;
+
+  /* Typography */
+  --font-editor:   'JetBrains Mono', monospace;
+  --font-prose:    'Inter', sans-serif;
+  --font-size-editor-default: 14px;
+  --font-size-prose-default:  16px;
+}
