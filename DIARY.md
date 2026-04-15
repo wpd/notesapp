@@ -143,6 +143,25 @@ Eventually, Claude Code reported a partial success.  It was able to run the unit
 While I was at work, I interacted with Claude on my iPhone to ask about deploying and testing the application on my MacBook.  It gave me some advice and cautions about starting that process sooner in the development than later, which is where I will go next.  But I wanted to get this much written down for now.
 
 ## Next steps
-1. Roll out the new `.claude/settings.json` file.
+1. Roll out the new `.claude/settings.json` file. (done)
 2. Follow Claude's recommendations for testing this code on my MacBook.
 3. Run the tests and application (at least) once on my Linux VM.
+
+## Actual next step
+I notice that Phase 1 is not actually complete (because the prompt I gave Claude code was to "Begin Phase 1").  Claude.ai recommends that I wait until Phase 1 is complete before rolling out the test framework on my MacBook, and Claude Code recommends that I submit the following prompt to a new instance (uncluttered by all of the debugging detritus) 
+
+> Read CLAUDE.md and ROADMAP.md in full. The Phase 1 infrastructure baseline is complete — all three test layers pass (npm run test exits 0). Now implement the Phase 1 UI: the tiling layout shell, activity sidebar, tile title bar, project directory setup, and keyboard shortcuts, exactly as specified. Write tests alongside the implementation. Do not consider Phase 1 complete until npm run test passes with E2E tests covering the Phase 1 behaviors.
+
+to which I will add (as advised by a previous conversation I had with Claude.ai after I got tired of my credits running out before my 5 hour limit):
+
+> If you stop for any reason, leave a PROGRESS.md file summarizing exactly what you completed, what's in progress, and what remains. Write it so a fresh Claude session can pick up from it.
+
+At Claude Code's recommendation (because I have changed `.claude/settings.json`) I have exited my current session (using `quit`) and am restarting, confirming that I started it with:
+
+```bash
+claude --dangerously-skip-permissions    
+```
+
+I will now prompt it with:
+
+> Read CLAUDE.md and ROADMAP.md in full. The Phase 1 infrastructure baseline is complete — all three test layers pass (npm run test exits 0). Now implement the Phase 1 UI: the tiling layout shell, activity sidebar, tile title bar, project directory setup, and keyboard shortcuts, exactly as specified. Write tests alongside the implementation. Do not consider Phase 1 complete until npm run test passes with E2E tests covering the Phase 1 behaviors. If you stop for any reason, leave a PROGRESS.md file summarizing exactly what you completed, what's in progress, and what remains. Write it so a fresh Claude session can pick up from it.
