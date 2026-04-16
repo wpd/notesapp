@@ -165,3 +165,24 @@ claude --dangerously-skip-permissions
 I will now prompt it with:
 
 > Read CLAUDE.md and ROADMAP.md in full. The Phase 1 infrastructure baseline is complete — all three test layers pass (npm run test exits 0). Now implement the Phase 1 UI: the tiling layout shell, activity sidebar, tile title bar, project directory setup, and keyboard shortcuts, exactly as specified. Write tests alongside the implementation. Do not consider Phase 1 complete until npm run test passes with E2E tests covering the Phase 1 behaviors. If you stop for any reason, leave a PROGRESS.md file summarizing exactly what you completed, what's in progress, and what remains. Write it so a fresh Claude session can pick up from it.
+
+# 04/15/26
+## Morning Results
+I woke up the next morning to find (unsurprisingly) that Claude had hit its resource limit.  I was disappointed not to see a `PROGRESS.md` file.  So I asked Claude about it:
+
+> \> I see that you did not follow my instructions and create a `PROGRESS.md` file when the rate limit was hit. Do you have enough information to continue working from where you left off or do you need further clarifications.
+
+...to which Claude Code responded by continuing its task.
+
+okay... I guess.
+
+## Evening Results
+I returned home from work this evening and opened up my Claude Code window at 7pm to see that, once again, (and just as unsurprising) it had hit its rate limit.  This time, I prompted it with:
+
+> \> continue
+
+and it continued, until it hit its rate limit at 8pm, telling me it was locked out until 11pm.  I thought the time window was 5 hours, but it now seems to be 4 hours.  I'm not going to argue.
+
+I found this [blog post](https://www.nathanonn.com/how-to-double-your-claude-code-usage-limits-without-upgrading-to-max/) which offered the handy tip that the time limit window (whether it is 4 hours or 5 hours) is a rolling window, that starts with the first Claude interaction... so, if I knew I was going to sit down with Claude at 7, and I knew I was going to chew through my allotment in just 1 hour, (and I knew that the rolling windows was 4 hours), I could have asked Claude a question at 4pm, restarted the Claude Code session at 7pm, hit my limit at 8pm, just as the limit reset.
+
+I might try to try that tomorrow.  For now, I think I'm going to be up until 11 so I can ask Claude Code to continue again.
