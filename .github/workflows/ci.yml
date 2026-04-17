@@ -28,7 +28,8 @@ jobs:
             libjavascriptcoregtk-4.1-dev \
             xvfb \
             x11-utils \
-            webkit2gtk-driver
+            webkit2gtk-driver \
+            dbus-x11
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -71,4 +72,6 @@ jobs:
         run: npm run tauri:build
 
       - name: E2E tests
-        run: npm run test:e2e
+        env:
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
+        run: dbus-run-session -- npm run test:e2e
