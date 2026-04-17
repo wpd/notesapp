@@ -602,8 +602,7 @@ describe("Save (C-x C-s)", () => {
 function countLeaves(tree: unknown): number {
   if (typeof tree === "string") return 1;
   if (tree && typeof tree === "object" && "first" in tree && "second" in tree) {
-    // biome-ignore lint/suspicious/noExplicitAny: MosaicNode recursive shape
-    const node = tree as any;
+    const node = tree as { first: unknown; second: unknown };
     return countLeaves(node.first) + countLeaves(node.second);
   }
   return 0;
@@ -669,8 +668,7 @@ describe("Layout persistence", () => {
         return;
       }
       if (node && typeof node === "object" && "first" in node) {
-        // biome-ignore lint/suspicious/noExplicitAny: recursive MosaicNode
-        const n = node as any;
+        const n = node as { first: unknown; second: unknown };
         collect(n.first);
         collect(n.second);
       }

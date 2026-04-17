@@ -25,10 +25,9 @@ beforeEach(resetStore);
 
 // Access the mocked Tauri invoke set up in tests/unit/setup.ts
 function getInvokeMock() {
-  // biome-ignore lint/suspicious/noExplicitAny: test-only access to window stub
-  return (window as any).__TAURI_INTERNALS__.invoke as ReturnType<
-    typeof vi.fn
-  >;
+  return (
+    window as unknown as { __TAURI_INTERNALS__: { invoke: ReturnType<typeof vi.fn> } }
+  ).__TAURI_INTERNALS__.invoke;
 }
 
 describe("layoutStore", () => {

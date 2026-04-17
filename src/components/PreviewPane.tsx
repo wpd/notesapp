@@ -49,7 +49,8 @@ function useActiveFilePath(tileId: string): string | null {
 
 export default function PreviewPane({
   tileId,
-  filePath: _ownFilePath,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  filePath,
 }: PreviewPaneProps): React.ReactElement {
   const activeFilePath = useActiveFilePath(tileId);
   const { ydocs } = useEditorStore();

@@ -8,10 +8,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import EditorPane from "../../src/components/EditorPane";
 import useEditorStore from "../../src/stores/editorStore";
 
-// biome-ignore lint/suspicious/noExplicitAny: test-only access to window stub
-const invokeMock = (window as any).__TAURI_INTERNALS__.invoke as ReturnType<
-  typeof vi.fn
->;
+const invokeMock = (
+  window as unknown as { __TAURI_INTERNALS__: { invoke: ReturnType<typeof vi.fn> } }
+).__TAURI_INTERNALS__.invoke;
 
 function resetStores() {
   useEditorStore.setState({
