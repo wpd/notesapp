@@ -13,10 +13,16 @@
  *       ↓  WebDriver HTTP on :4444
  *   wdio → our tests
  *
- * Why not tauri-driver?
- *   tauri-driver sends "webkitgtk:browserOptions" but WebKitWebDriver ≥ 2.46
- *   only accepts "webkit:browserOptions".  We replicate tauri-driver's actual
- *   algorithm (WEBKIT_INSPECTOR_SERVER + --target) directly here instead.
+ * The critical fix: after the WebDriver session is established (which attaches
+ * to the running webview but in an isolation context that cannot see JS already
+ * executed on the page), we issue an explicit browser.url('tauri://localhost/')
+ * in the global `before` hook.  This forces the webview to load the page fresh
+ * inside the automation context, so ES-module scripts execute and React mounts.
+ *
+ * Why not webkit:browserOptions.binary?
+ *   This version of WebKitWebDriver does not launch Tauri apps via capabilities;
+ *   it opens MiniBrowser instead.  Only the --target + explicit navigation
+ *   approach reaches the Tauri webview reliably.
  *
  * Prerequisites:
  *   1. webkit2gtk-driver installed   (sudo apt install webkit2gtk-driver)
@@ -30,6 +36,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { ChildProcess, spawn } from "child_process";
 import net from "net";
+import os from "os";
+import fs from "fs";
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +51,7 @@ const WEBDRIVER_PORT = 4444;
 
 let appProcess: ChildProcess | undefined;
 let webkitDriver: ChildProcess | undefined;
+let testProjectDir: string | undefined;
 
 /** Poll until something is listening on host:port, up to timeoutMs. */
 function waitForPort(
@@ -84,13 +93,11 @@ export const config: WebdriverIO.Config = {
   specs: ["tests/e2e/**/*.e2e.ts"],
   maxInstances: 1,
 
-  // Session is created against the already-running Tauri webview via --target.
-  // No "binary" capability needed — the app is started in onPrepare below.
   capabilities: [
     {
       maxInstances: 1,
-      // No browserName constraint — the Tauri webview doesn't report "MiniBrowser".
-      // Leaving it unset matches any browser name reported by the webview.
+      // No browserName constraint — let WebKitWebDriver match whatever the
+      // Tauri webview reports.
     },
   ],
 
@@ -107,27 +114,126 @@ export const config: WebdriverIO.Config = {
     timeout: 60000,
   },
 
+  // ---------------------------------------------------------------------------
+  // Navigate to the Tauri app and wait for React to mount before any tests.
+  //
+  // Architecture:
+  //   1. The Tauri app starts and loads tauri://localhost/ (on_page_load hook
+  //      prints NOTESAPP_PAGE_LOADED when done, signalling onPrepare to start
+  //      WebKitWebDriver).
+  //   2. WebKitWebDriver creates a WebDriver automation session.  Critically,
+  //      creating this session RESETS the webview to about:blank — this is
+  //      standard WebKit automation behaviour.
+  //   3. We must navigate BACK to tauri://localhost/ using JavaScript
+  //      (window.location.replace) because browser.url() does not support
+  //      custom URL schemes in WebKitWebDriver.
+  //   4. We then wait for React to mount (app-root element to appear).
+  // ---------------------------------------------------------------------------
+  before: async function () {
+    // Strategy:
+    //   1. Navigate to tauri://localhost/ (triggers page load).
+    //   2. Wait for __NOTESAPP_PRELOADED__ to be set (Rust on_page_load hook).
+    //   3. Call window.__notesapp_boot__() via browser.execute() to force a
+    //      fresh synchronous render with the preloaded data.  This is more
+    //      reliable than relying on React passive effects (MessageChannel) or
+    //      MutationObserver timers — both can be throttled in WebKit automation.
+    //   4. Wait for app-shell (XPath, sees live DOM) to confirm AppShell is up.
+
+    await browser.url("tauri://localhost/");
+
+    // Poll until __NOTESAPP_PRELOADED__ is set (by on_page_load(Finished)).
+    // browser.execute() can read custom window properties even though it uses
+    // a stale execution context for DOM queries.
+    await browser.waitUntil(
+      () =>
+        browser.execute(
+          () =>
+            !!(
+              window as Window & {
+                __NOTESAPP_PRELOADED__?: { dir?: string };
+              }
+            ).__NOTESAPP_PRELOADED__?.dir,
+        ),
+      { timeout: 15000, interval: 100, timeoutMsg: "__NOTESAPP_PRELOADED__ not set after 15s" },
+    );
+
+    // Boot the React app.  In WebKit automation mode, session creation may
+    // reset the DOM or leave the concurrent-mode scheduler's MessageChannel
+    // queue unprocessed; calling __notesapp_boot__ directly guarantees a
+    // fresh synchronous render.
+    await browser.execute(() => {
+      (window as Window & { __notesapp_boot__?: () => void }).__notesapp_boot__?.();
+    });
+
+    // Wait for AppShell to be in the live DOM (XPath sees live DOM).
+    await $('//*[@data-testid="app-shell"]').waitForExist({ timeout: 10000 });
+
+    // Brief pause to let AppShell's layout useEffect (initDefaultLayout) run
+    // so tiles are in the tree before the first test queries them.
+    await browser.pause(300);
+  },
+
   onPrepare: async function () {
     // 0. Kill any stale processes left from a previous aborted run.
     const { spawnSync } = await import("child_process");
     spawnSync("fuser", ["-k", `${WEBKIT_INSPECTION_PORT}/tcp`, `${WEBDRIVER_PORT}/tcp`], {
       stdio: "ignore",
     });
+    // Brief pause so the OS fully releases the ports.
+    await new Promise((r) => setTimeout(r, 500));
+
+    // 0.5. Create a temporary test project directory with some sample notes.
+    testProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), "notesapp-e2e-"));
+    const notesDir = path.join(testProjectDir, "notes");
+    const notesAppDir = path.join(testProjectDir, ".notesapp");
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.mkdirSync(notesAppDir, { recursive: true });
+    fs.mkdirSync(path.join(testProjectDir, "references"), { recursive: true });
+    fs.mkdirSync(path.join(testProjectDir, "attachments"), { recursive: true });
+    // Create sample notes for testing the explorer and buffer switcher
+    fs.writeFileSync(path.join(notesDir, "alpha.md"), "# Alpha Note\n\nThis is the alpha note.\n");
+    fs.writeFileSync(path.join(notesDir, "beta.md"), "# Beta Note\n\nThis is the beta note.\n");
+    fs.writeFileSync(path.join(notesDir, "gamma.md"), "# Gamma Note\n\nThis is the gamma note.\n");
+    // Create minimal project.toml
+    fs.writeFileSync(
+      path.join(notesAppDir, "project.toml"),
+      `[project]\nname = "E2E Test Project"\nversion = "1"\n`,
+    );
+    console.log(`  Test project dir: ${testProjectDir}`);
+    // Expose the project dir to spec files (same Node process) so they can
+    // observe files the Tauri backend writes into .notesapp/ (layout.json, …).
+    process.env.NOTESAPP_E2E_PROJECT_DIR = testProjectDir;
 
     // 1. Start the Tauri app with WebKit remote-inspection and automation enabled.
+    // Use 'pipe' for stdout so we can watch for the NOTESAPP_PAGE_LOADED marker
+    // that lib.rs emits via on_page_load when the webview finishes loading.
     appProcess = spawn(APPLICATION, [], {
       env: {
         ...process.env,
         WEBKIT_INSPECTOR_SERVER: `127.0.0.1:${WEBKIT_INSPECTION_PORT}`,
-        // Enable WebDriver automation — tauri-runtime-wry reads this env var and
-        // calls wry::WebContext::set_allows_automation(true), which is required for
-        // WebKitWebDriver to establish a session with the running webview.
         TAURI_WEBVIEW_AUTOMATION: "true",
-        // Suppress GPU-acceleration errors in VMs (non-fatal, just noisy).
         WEBKIT_DISABLE_DMABUF_RENDERER: "1",
         LIBGL_ALWAYS_SOFTWARE: "1",
+        NOTESAPP_PROJECT_DIR: testProjectDir,
       },
-      stdio: [null, process.stdout, process.stderr],
+      stdio: ["ignore", "pipe", process.stderr],
+    });
+
+    // Forward app stdout to our stdout AND watch for the page-loaded marker.
+    const pageLoadedPromise = new Promise<void>((resolve) => {
+      const deadline = setTimeout(() => {
+        console.log("  Warning: NOTESAPP_PAGE_LOADED not seen after 20s; proceeding anyway.");
+        resolve();
+      }, 20000);
+      if (!appProcess?.stdout) { clearTimeout(deadline); resolve(); return; }
+      appProcess.stdout.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        process.stdout.write(text); // forward to our stdout
+        if (text.includes("NOTESAPP_PAGE_LOADED")) {
+          clearTimeout(deadline);
+          resolve();
+        }
+      });
     });
 
     // 2. Wait for the WebKit inspection server to accept connections.
@@ -136,6 +242,16 @@ export const config: WebdriverIO.Config = {
     );
     await waitForPort("127.0.0.1", WEBKIT_INSPECTION_PORT, 20000);
     console.log("  WebKit inspector ready.");
+
+    // 2.5. Wait for the Tauri webview to finish loading tauri://localhost/
+    // before starting WebKitWebDriver.  The inspection port opens while the
+    // webview is still at about:blank; if WebKitWebDriver connects then, the
+    // session is permanently bound to the blank page.  The Rust on_page_load
+    // hook prints "NOTESAPP_PAGE_LOADED" when the page finishes loading, which
+    // is our reliable signal that it is safe to connect.
+    console.log("  Waiting for NOTESAPP_PAGE_LOADED marker…");
+    await pageLoadedPromise;
+    console.log("  Tauri page loaded — connecting WebKitWebDriver.");
 
     // 3. Start WebKitWebDriver pointing at the running app's inspection port.
     webkitDriver = spawn(
@@ -155,5 +271,13 @@ export const config: WebdriverIO.Config = {
   onComplete: function () {
     if (webkitDriver) webkitDriver.kill();
     if (appProcess) appProcess.kill();
+    // Clean up temp project dir
+    if (testProjectDir) {
+      try {
+        fs.rmSync(testProjectDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   },
 };

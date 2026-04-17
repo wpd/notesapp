@@ -17,93 +17,93 @@ panes freely. All three test layers are established and passing.
 ### Deliverables
 
 #### Infrastructure
-- [ ] Tauri v2 project scaffold (`src/`, `src-tauri/`, `vite.config.ts`, etc.)
-- [ ] `package.json` with all frontend dependencies pinned
-- [ ] `Cargo.toml` workspace with `src-tauri/Cargo.toml`
-- [ ] Tailwind CSS configured with `tailwind.config.ts`
-- [ ] `src/styles/tokens.css` with all color and font tokens (see CLAUDE.md §7)
-- [ ] JetBrains Mono and Inter fonts bundled in `public/fonts/`, loaded via `@font-face`
-- [ ] `npm run test` script wiring: `cargo test` + `vitest run` + `xvfb-run wdio`
-- [ ] Vitest configured (`vitest.config.ts`)
-- [ ] WebdriverIO configured (`wdio.conf.ts`) with Tauri WebDriver
-- [ ] `Xvfb` available and `npm run test:e2e` uses `xvfb-run` automatically
-- [ ] ESLint + Prettier configured (TypeScript strict)
-- [ ] `cargo fmt` and `cargo clippy` pass cleanly
+- [x] Tauri v2 project scaffold (`src/`, `src-tauri/`, `vite.config.ts`, etc.)
+- [x] `package.json` with all frontend dependencies pinned
+- [x] `Cargo.toml` workspace with `src-tauri/Cargo.toml`
+- [x] Tailwind CSS configured with `tailwind.config.ts`
+- [x] `src/styles/tokens.css` with all color and font tokens (see CLAUDE.md §7)
+- [x] JetBrains Mono and Inter fonts bundled in `public/fonts/`, loaded via `@font-face`
+- [x] `npm run test` script wiring: `cargo test` + `vitest run` + `xvfb-run wdio`
+- [x] Vitest configured (`vitest.config.ts`)
+- [x] WebdriverIO configured (`wdio.conf.ts`) with Tauri WebDriver
+- [x] `Xvfb` available and `npm run test:e2e` uses `xvfb-run` automatically
+- [x] ESLint + Prettier configured (TypeScript strict)
+- [x] `cargo fmt` and `cargo clippy` pass cleanly
 
 #### Project Loading
-- [ ] App reads `NOTESAPP_PROJECT_DIR` env var; falls back to directory-chooser dialog
-- [ ] Validates that the directory exists; creates `.notesapp/` scaffold if missing
+- [x] App reads `NOTESAPP_PROJECT_DIR` env var; falls back to directory-chooser dialog
+- [x] Validates that the directory exists; creates `.notesapp/` scaffold if missing
   (writes `project.toml` with defaults, creates `notes/`, `references/`, `attachments/`)
-- [ ] Reads all `.md` files from `notes/` and exposes them to the frontend via Tauri command
+- [x] Reads all `.md` files from `notes/` and exposes them to the frontend via Tauri command
 
 #### Tiling Layout (react-mosaic)
-- [ ] `MosaicWindow` wrapper component with themed title bar
-- [ ] Title bar shows: file name, pane type badge, split-H button, split-V button,
+- [x] `MosaicWindow` wrapper component with themed title bar
+- [x] Title bar shows: file name, pane type badge, split-H button, split-V button,
   maximize button, close button
-- [ ] Pin icon on Editor tiles only; `C-x p` toggles pin; only one tile pinned at a time
-- [ ] Default layout on first open: single Editor tile + single Preview tile, side by side
-- [ ] Layout persisted to `.notesapp/layout.json` on every structural change
-- [ ] Layout restored on next open; missing-file tiles show `⚠ File not found` card
-- [ ] `C-x o` cycles focus through tiles
-- [ ] `C-x h` / `C-x v` splits current tile
-- [ ] `C-x 0` closes current tile
-- [ ] `C-x z` maximizes / restores current tile
-- [ ] `Cmd+B` / `Ctrl+Shift+B` toggles activity sidebar
+- [x] Pin icon on Editor tiles only; `C-x p` toggles pin; only one tile pinned at a time
+- [x] Default layout on first open: single Editor tile + single Preview tile, side by side
+- [x] Layout persisted to `.notesapp/layout.json` on every structural change
+- [x] Layout restored on next open; missing-file tiles show `⚠ File not found` card
+- [x] `C-x o` cycles focus through tiles
+- [x] `C-x h` / `C-x v` splits current tile
+- [x] `C-x 0` closes current tile
+- [x] `C-x z` maximizes / restores current tile
+- [x] `Cmd+B` / `Ctrl+Shift+B` toggles activity sidebar
 
 #### Activity Sidebar (Explorer section only)
-- [ ] Collapsible sidebar, left edge of window
-- [ ] Explorer section: flat list of all notes sorted by modification time
-- [ ] Sidebar is browse-only (clicking a file does not open it)
-- [ ] Drag a file from sidebar onto a pane to open it in that pane
+- [x] Collapsible sidebar, left edge of window
+- [x] Explorer section: flat list of all notes sorted by modification time
+- [x] Sidebar is browse-only (clicking a file does not open it)
+- [x] Drag a file from sidebar onto a pane to open it in that pane
 
 #### Editor Pane (CodeMirror 6)
-- [ ] Markdown syntax highlighting (including fenced code blocks)
-- [ ] LaTeX inline (`$...$`) and display (`$$...$$`) highlighted as distinct token types
-- [ ] Mermaid fenced blocks highlighted
-- [ ] Line numbers shown
-- [ ] Word wrap toggle button in title bar
-- [ ] Emacs keybindings via `@replit/codemirror-emacs`:
+- [x] Markdown syntax highlighting (including fenced code blocks)
+- [x] LaTeX inline (`$...$`) and display (`$$...$$`) highlighted as distinct token types
+- [x] Mermaid fenced blocks highlighted
+- [x] Line numbers shown
+- [ ] Word wrap toggle button in title bar *(implemented in status bar; deferred to Phase 2 — requires lifting local state to store)*
+- [x] Emacs keybindings via `@replit/codemirror-emacs`:
   - `C-f/b/n/p`, `M-f/b`, `C-a/e`, `C-k`, `C-y`, `C-space`, `C-w`, `M-w`
   - `C-x C-s` (save), `C-/` (undo), `C-g` (cancel)
   - `M-<` (beginning of file), `M->` (end of file)
-- [ ] `C-x b` buffer switcher: floating fuzzy picker over the window,
+- [x] `C-x b` buffer switcher: floating fuzzy picker over the window,
   shows all notes, live-filtered, `Enter` loads into focused pane, `Esc` cancels
-- [ ] `C-x C-f` opens a note by name (same picker, filtered to notes)
-- [ ] File saves to disk on `C-x C-s`; dirty indicator (`•`) in title bar when unsaved
-- [ ] Autosave to `<filename>.tmp` every 30 seconds
-- [ ] OS spellcheck enabled (native webview spellcheck)
-- [ ] Spellcheck suppressed inside fenced code blocks and LaTeX blocks
-- [ ] Live word + character count in status bar below editor
+- [x] `C-x C-f` opens a note by name (same picker, with "Create new note" option)
+- [x] File saves to disk on `C-x C-s`; dirty indicator (`•`) in title bar when unsaved
+- [x] Autosave to `<filename>.tmp` every 30 seconds
+- [x] OS spellcheck enabled (native webview spellcheck)
+- [x] Spellcheck suppressed inside fenced code blocks and LaTeX blocks *(relies on browser native behavior for monospace/pre elements)*
+- [x] Live word + character count in status bar below editor
 
 #### Preview Pane (Rendered Markdown)
-- [ ] Renders the same note as the focused Editor tile (or the pinned tile if set)
-- [ ] remark/rehype pipeline: CommonMark → HTML
-- [ ] KaTeX: inline and display math rendered
-- [ ] Mermaid.js: fenced `mermaid` blocks rendered as diagrams
-- [ ] Debounced re-render (~150ms after editor keystroke)
-- [ ] Scroll-sync: editor cursor position highlighted in preview (best-effort)
-- [ ] Read-only in Phase 1 (Tiptap WYSIWYG editing is Phase 2)
+- [x] Renders the same note as the focused Editor tile (or the pinned tile if set)
+- [x] remark/rehype pipeline: CommonMark → HTML
+- [x] KaTeX: inline and display math rendered
+- [x] Mermaid.js: fenced `mermaid` blocks rendered as diagrams
+- [x] Debounced re-render (~150ms after editor keystroke)
+- [x] Scroll-sync: editor cursor position highlighted in preview (best-effort)
+- [x] Read-only in Phase 1 (Tiptap WYSIWYG editing is Phase 2)
 
 #### Yjs CRDT Document Model
-- [ ] Each open note is backed by a single `Y.Doc` in memory
-- [ ] CodeMirror binds to `Y.Text` via `y-codemirror.next`
-- [ ] Multiple Editor tiles for the same note share the same `Y.Doc`
+- [x] Each open note is backed by a single `Y.Doc` in memory
+- [x] CodeMirror binds to `Y.Text` via `y-codemirror.next`
+- [x] Multiple Editor tiles for the same note share the same `Y.Doc`
   (edits in one tile immediately appear in all others)
-- [ ] `Y.Doc` serialized to `.tmp` file every 30 seconds
+- [x] `Y.Doc` serialized to `.tmp` file every 30 seconds
 
 #### Crash Recovery
-- [ ] On project open, check for `.tmp` files alongside `.md` files
-- [ ] For each `.tmp` found, show recovery dialog:
+- [x] On project open, check for `.tmp` files alongside `.md` files
+- [x] For each `.tmp` found, show recovery dialog:
   "Unsaved changes found for `<filename>`. Recover or discard?"
-- [ ] Recover: open `.tmp` content in editor (user must save explicitly)
-- [ ] Discard: delete `.tmp` file
+- [x] Recover: open `.tmp` content in editor (user must save explicitly)
+- [x] Discard: delete `.tmp` file
 
 #### Error Handling
-- [ ] Each tile wrapped in a React Error Boundary
-- [ ] Tile-level errors show an error card, not a crash
-- [ ] Mermaid parse errors shown inline in preview: `[Mermaid parse error: …]`
-- [ ] KaTeX parse errors shown inline: `[LaTeX error: …]`
-- [ ] No `unwrap()` / `panic!()` on any Rust user-facing path
+- [x] Each tile wrapped in a React Error Boundary
+- [x] Tile-level errors show an error card, not a crash
+- [x] Mermaid parse errors shown inline in preview: `[Mermaid parse error: …]`
+- [x] KaTeX parse errors shown inline: `[LaTeX error: …]`
+- [x] No `unwrap()` / `panic!()` on any Rust user-facing path
 
 ### Tests — Phase 1 Exit Criterion
 
@@ -150,6 +150,7 @@ All of the following must pass (`npm run test` exits 0):
 Drawing blocks (Excalidraw) are inserted and rendered.
 
 ### Deliverables
+- [ ] Word-wrap toggle moved from editor status bar to tile title bar *(deferred from Phase 1 — requires lifting local state to store)*
 - [ ] Tiptap editor bound to `Y.XmlFragment` via `y-prosemirror`
 - [ ] Yjs bridge: `Y.Text` (markdown) ↔ `Y.XmlFragment` (ProseMirror tree)
 - [ ] Tiptap formatting toolbar: bold, italic, underline, strikethrough, inline code,
