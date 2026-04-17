@@ -250,3 +250,8 @@ All 7 Phase 1 gap-closing tasks are complete. Here's the summary:
 Asking Claude in /plan mode:
 
 > ❯ Where do we stand now?  Do you believe that phase 1 is complete?  Is @PROGRESS.md up to date with respect to where things stand now?  Should you check off the completed boxes in @ROADMAP.md or should I?  Why haven't you committed any of your work to the git repo like you did earlier in this process? 
+
+## Let's set up README.md and GitHub CI/CD
+Actually, let's have Claude do that for me
+
+> \> I am planning on pushing to GitHub at a cadence that would be similar to making pull requests onto main.  So I think I am okay with running the full suite of tests... Does GitHub impose restrictions on the complexity, compute, disk, memory, or networking usage of the CI/CD pipeline?
