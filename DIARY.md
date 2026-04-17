@@ -185,4 +185,68 @@ and it continued, until it hit its rate limit at 8pm, telling me it was locked o
 
 I found this [blog post](https://www.nathanonn.com/how-to-double-your-claude-code-usage-limits-without-upgrading-to-max/) which offered the handy tip that the time limit window (whether it is 4 hours or 5 hours) is a rolling window, that starts with the first Claude interaction... so, if I knew I was going to sit down with Claude at 7, and I knew I was going to chew through my allotment in just 1 hour, (and I knew that the rolling windows was 4 hours), I could have asked Claude a question at 4pm, restarted the Claude Code session at 7pm, hit my limit at 8pm, just as the limit reset.
 
-I might try to try that tomorrow.  For now, I think I'm going to be up until 11 so I can ask Claude Code to continue again.
+I might try to try that tomorrow.  For now, I think I'm going to be up until 11 so I can ask Claude Code to continue again.  (Which I did.)
+
+# 04/16/26
+## Continuing on
+I told Claude to continue again first thing in the morning (around 7am), ran out of tokens again, and checked in with Claude (via an ssh session to my `screen` window in which Claude Code was running) around 11:30.
+
+I asked Claude (via my phone) about switching to Opus and was told:
+
+```
+/model opus
+```
+
+I mentioned the fact that Claude Code has not generated a `PROGRESS.md` file for me during each of timed out sessions.  I also (perhaps at Claude's prompt) expressed concern about whether I should start a new session for the Opus session or change the current session, and the cost of reading/parsing/dealing with the entire conversation history in my current Sonnet session.  I am still not sure I completely understand all of this, but it seems like I would have to pay the price of parsing the history in either case (creating the `PROGRESS.md` file or just switching the model) and Claude recommended that I use the following as prompt:
+
+> Before we continue: create PROGRESS.md right now in the project root. Include: current objective, every completed step with outcome, the exact next step, and any open questions or blockers. Be specific — this file is your only memory across rate-limit resets. After creating it, confirm what's in it, then continue with the next task.
+
+I tried pasting that in at the prompt and Claude Code appeared to go back to working on my project.  When I checked in later, I did not see a `PROGRESS.md` file (although I do now, sometime after 8pm).  Sometime around 4, when my timeout had expired, Claude was no longer working.  I checked in on it with:
+
+> Does this implementation meet all of the requirements laid out for phase 1?
+
+I have lost the response it gave me, but I recall it mentioning several things that still needed work and asked me what it should do, one option being "work through in order", which is what I requested.
+
+## What's happening at 8pm?
+I connected back, told Claude to `continue` and a few minutes later, it presented me with:
+
+```
+All 7 Phase 1 gap-closing tasks are complete. Here's the summary:
+
+  Test results — all green across three layers:
+  - Rust: 15 pass
+  - Vitest: 9 files / 84 tests pass (was 59)
+  - E2E: 26 pass (was 23)
+
+  What was implemented this session:
+
+  ┌────────────────────┬───────────────────────────────────────────────────────────────────────────────────────┐
+  │        Task        │                                        Change                                         │
+  ├────────────────────┼───────────────────────────────────────────────────────────────────────────────────────┤
+  │                    │ schedulePersist() (250ms debounce) fires after splitTile, closeTile, toggleMaximize,  │
+  │ 4. Auto-persist    │ setMosaicTree, setTileFile. Pin intentionally excluded (transient per spec). 8 new    │
+  │                    │ unit tests.                                                                           │
+  ├────────────────────┼───────────────────────────────────────────────────────────────────────────────────────┤
+  │ 5. Crash-recovery  │ RecoveryDialog.tsx — lists .tmp autosave files on project open, offers Recover All /  │
+  │ dialog             │ Discard All. Wired into AppShell via find_recovery_files IPC. 6 new unit tests.       │
+  ├────────────────────┼───────────────────────────────────────────────────────────────────────────────────────┤
+  │ 7. Layout          │ Reads .notesapp/layout.json from the host filesystem after a structural change.       │
+  │ persistence E2E    │ Validates leaf/tile shape invariants that loadLayout depends on. 2 new E2E tests.     │
+  ├────────────────────┼───────────────────────────────────────────────────────────────────────────────────────┤
+  │                    │ ⚠ File not found card in EditorPane (3 tests). Native spellcheck on CodeMirror.       │
+  │ 6. Nit-fixes       │ Distinct C-x C-f find-file picker with "Create new note" row (3 tests). LaTeX         │
+  │                    │ highlighting confirmed working.                                                       │
+  └────────────────────┴───────────────────────────────────────────────────────────────────────────────────────┘
+
+  One item deferred: Moving the word-wrap toggle from the editor status bar to TileBar (requires lifting local
+  state to store or ref — low risk, pure UX polish).
+
+  New files created:
+  - src/components/RecoveryDialog.tsx
+  - tests/unit/RecoveryDialog.test.tsx
+  - tests/unit/EditorPane.test.tsx
+```
+## Where now?
+Asking Claude in /plan mode:
+
+> ❯ Where do we stand now?  Do you believe that phase 1 is complete?  Is @PROGRESS.md up to date with respect to where things stand now?  Should you check off the completed boxes in @ROADMAP.md or should I?  Why haven't you committed any of your work to the git repo like you did earlier in this process? 
