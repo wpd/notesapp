@@ -1,5 +1,6 @@
-# 04/14/26
-## Background
+# Diary of thoughts and notes to myself about this project
+## 04/14/26
+### Background
 Maybe I will backfill this someday.  (Maybe I'm doing that now.) For now...
 
 I had Claude interview me for this project and ultimately produced a SPEC.md with 10 development phases.  I fed it into Claude code, asked it to implement phase 1, and went to work.  When I got home, it was stuck at a prompt asking me if it was okay if it ran some innocuous looking command.  I have no idea how much of the day it was stuck at that prompt.  I clicked on (one of the) "Yes" button(s)... only to have it prompt me again for another command, and then again for another command, ad nauseam.
@@ -58,7 +59,7 @@ Then I worked with Claude on SPEC.md again.  I polished it and focused Claude on
 }
 ```
 
-## My first attempt with the new development strategy
+### My first attempt with the new development strategy
 I asked Claude to prepare a `DEV_ENVIRONMENT.md` file with instructions for installing of the development dependencies for the project, which it did.
 
 Claude even gave me the prompt I should use to implement Phase 1 of the project:
@@ -135,19 +136,19 @@ Eventually, Claude Code suggested that I put the following in my `.claude/settin
 }
 ```
 
-## Success, of a sort
+### Success, of a sort
 
 Eventually, Claude Code reported a partial success.  It was able to run the unit tests, but neglected to include a tool dependency for the E2E tests.  I installed that tool and prompted Claude Code to continue to develop, debug, and iterate on Phase 1 until the E2E tests passed.  Which it did while I went to work.  Maybe it prompted me about executing some more commands as it got started, maybe it didn't.  I don't recall.
 
-## Now what?
+### Now what?
 While I was at work, I interacted with Claude on my iPhone to ask about deploying and testing the application on my MacBook.  It gave me some advice and cautions about starting that process sooner in the development than later, which is where I will go next.  But I wanted to get this much written down for now.
 
-## Next steps
+### Next steps
 1. Roll out the new `.claude/settings.json` file. (done)
 2. Follow Claude's recommendations for testing this code on my MacBook.
 3. Run the tests and application (at least) once on my Linux VM.
 
-## Actual next step
+### Actual next step
 I notice that Phase 1 is not actually complete (because the prompt I gave Claude code was to "Begin Phase 1").  Claude.ai recommends that I wait until Phase 1 is complete before rolling out the test framework on my MacBook, and Claude Code recommends that I submit the following prompt to a new instance (uncluttered by all of the debugging detritus) 
 
 > Read CLAUDE.md and ROADMAP.md in full. The Phase 1 infrastructure baseline is complete — all three test layers pass (npm run test exits 0). Now implement the Phase 1 UI: the tiling layout shell, activity sidebar, tile title bar, project directory setup, and keyboard shortcuts, exactly as specified. Write tests alongside the implementation. Do not consider Phase 1 complete until npm run test passes with E2E tests covering the Phase 1 behaviors.
@@ -166,8 +167,8 @@ I will now prompt it with:
 
 > Read CLAUDE.md and ROADMAP.md in full. The Phase 1 infrastructure baseline is complete — all three test layers pass (npm run test exits 0). Now implement the Phase 1 UI: the tiling layout shell, activity sidebar, tile title bar, project directory setup, and keyboard shortcuts, exactly as specified. Write tests alongside the implementation. Do not consider Phase 1 complete until npm run test passes with E2E tests covering the Phase 1 behaviors. If you stop for any reason, leave a PROGRESS.md file summarizing exactly what you completed, what's in progress, and what remains. Write it so a fresh Claude session can pick up from it.
 
-# 04/15/26
-## Morning Results
+## 04/15/26
+### Morning Results
 I woke up the next morning to find (unsurprisingly) that Claude had hit its resource limit.  I was disappointed not to see a `PROGRESS.md` file.  So I asked Claude about it:
 
 > \> I see that you did not follow my instructions and create a `PROGRESS.md` file when the rate limit was hit. Do you have enough information to continue working from where you left off or do you need further clarifications.
@@ -176,7 +177,7 @@ I woke up the next morning to find (unsurprisingly) that Claude had hit its reso
 
 okay... I guess.
 
-## Evening Results
+### Evening Results
 I returned home from work this evening and opened up my Claude Code window at 7pm to see that, once again, (and just as unsurprising) it had hit its rate limit.  This time, I prompted it with:
 
 > \> continue
@@ -187,8 +188,8 @@ I found this [blog post](https://www.nathanonn.com/how-to-double-your-claude-cod
 
 I might try to try that tomorrow.  For now, I think I'm going to be up until 11 so I can ask Claude Code to continue again.  (Which I did.)
 
-# 04/16/26
-## Continuing on
+## 04/16/26
+### Continuing on
 I told Claude to continue again first thing in the morning (around 7am), ran out of tokens again, and checked in with Claude (via an ssh session to my `screen` window in which Claude Code was running) around 11:30.
 
 I asked Claude (via my phone) about switching to Opus and was told:
@@ -207,7 +208,7 @@ I tried pasting that in at the prompt and Claude Code appeared to go back to wor
 
 I have lost the response it gave me, but I recall it mentioning several things that still needed work and asked me what it should do, one option being "work through in order", which is what I requested.
 
-## What's happening at 8pm?
+### What's happening at 8pm?
 I connected back, told Claude to `continue` and a few minutes later, it presented me with:
 
 ```
@@ -246,12 +247,60 @@ All 7 Phase 1 gap-closing tasks are complete. Here's the summary:
   - tests/unit/RecoveryDialog.test.tsx
   - tests/unit/EditorPane.test.tsx
 ```
-## Where now?
+### Where now?
 Asking Claude in /plan mode:
 
 > ❯ Where do we stand now?  Do you believe that phase 1 is complete?  Is @PROGRESS.md up to date with respect to where things stand now?  Should you check off the completed boxes in @ROADMAP.md or should I?  Why haven't you committed any of your work to the git repo like you did earlier in this process? 
 
-## Let's set up README.md and GitHub CI/CD
+### Let's set up README.md and GitHub CI/CD
 Actually, let's have Claude do that for me
 
 > \> I am planning on pushing to GitHub at a cadence that would be similar to making pull requests onto main.  So I think I am okay with running the full suite of tests... Does GitHub impose restrictions on the complexity, compute, disk, memory, or networking usage of the CI/CD pipeline?
+
+## 04/17/26
+### Build and run on my MacBook
+Prerequisites:
+
+```bash
+# Install Xcode Command Line Tools. (Already done)
+xcode-select --install
+
+# Install Homebrew (I don't think I should need this, but I'll do it anyway)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Rust and tauri-cli (I had already installed Rust, tauri-cli was new)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+cargo install tauri-cli --version "^2.0"
+cargo install tauri-driver
+
+# Install npm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source "$HOME/.nvm/nvm.sh"
+nvm install 20
+
+# Install Python 3.10+
+# I downloaded and installed Python 3.13.13 from https://www.python.org/downloads/macos/
+# Then I updated the PATH in my terminal to find it before the 3.9 Python that
+# was already installed.
+```
+
+Clone, build, and run
+
+```bash
+git pull
+npm install
+npm run tauri:dev
+```
+### Found a bug, asked Claude to write a test for it
+I tried splitting a pane horizontally and then vertically (or perhaps the other way around,
+I don't recall).  The first time I tried that, the application screen showed blank white
+all over.  The second time, it appeared to crash.  So I gave Claude Code the following
+vague prompt.
+
+> Please construct a test where you open a blank project, split the pane on the left horizontally, and then spilt the bottom left pane vertically.  When I try that, the application does not appear to behave properly.      
+
+I was quite surprised to watch Claude Code dig into the source tree analyzing the split
+logic.  It ultimately came up with some new tests and some recommended changes, which
+I accepted.  I also updated SPEC.md (and had Claude Code create tests to verify) that
+panes can be split arbitrarily, up to constraints imposed by the canvas size.
