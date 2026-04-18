@@ -35,3 +35,6 @@ npm-debug.log*
 
 # Test coverage
 /coverage/
+
+# Prompts for Claude Code CLI
+PROMPT.md
