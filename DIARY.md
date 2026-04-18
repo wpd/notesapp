@@ -313,3 +313,60 @@ I just prompted Claude with:
 and we discussed various changes to the spec to address this.  The end result is likely
 to be new versions of SPEC.md and ROADMAP.md and a prompt to Claude Code to revisit its
 phase 1 work.  Stay tuned.
+
+# 04/17/26
+## Started building the code...
+Chatted with Claude this morning about tweaking the spec.  Tweaked.  Created a PROMPT.md,
+told Claude to read that, then ... got rate limited again.
+
+### NOTES TO SELF
+Or, perhaps **Notes to Self and Claude, once the current rate limit timer expires**
+
+```
+/btw What is the recommended approach to telling `claude` to continue the work it was doing when it hit the rate limit.  Is typing `continue` sufficient?  Or is there something else I should do?
+```
+Claude said that `continue` is sufficient, but my use of `PROGRESS.md` also helps (although
+as you'll see below, I have my doubts.))
+
+```
+/btw Is it possible for you to save state in such a manner as to allow me to shut down this `claude` session, reboot the computer, and then restart `claude` picking up with its state exactly where we are right now?
+```
+
+Claude responded:
+>     Not exactly as-is, but close. Here's the situation:
+>
+>    What's preserved automatically:
+>    - Your conversation history is saved by Claude Code and will be available when you restart.
+>    You can resume a previous conversation with claude --continue (most recent) or claude --resume
+>     (pick from a list).
+>
+>    What's NOT preserved:
+>    - The exact internal context window state. When you restart, the conversation may be loaded
+>    from a compressed/summarized form, so some nuance can be lost.
+>    - Any background tasks or running processes obviously stop.
+>
+>   Best practice for a clean shutdown/resume:
+
+>    1. Ask me to update PROGRESS.md with the current exact state before shutting down — what's
+>    done, what's in progress, what's next, any known failing tests, etc.
+>    2. Reboot.
+>    3. Start claude --continue or claude --resume to pick up the conversation.
+>    4. Say "read PROGRESS.md and continue from where we left off" if the context seems degraded.
+>
+>    The PROGRESS.md approach you're already using is essentially the best manual state-saving
+>    mechanism available. It's more reliable than conversation history alone because it's explicit,
+>     structured, and doesn't degrade with context compaction.
+>
+>    So: claude --continue + PROGRESS.md is the most robust resume strategy.
+
+If it is possible to do that, then I think I want to shut down and increase the number of cores to 8.
+
+I was going to ask the following, but I think it has been overcome by the previous answer.
+
+```
+/btw How can I modify the current prompt to require that `claude` update and commit the PROGRESS.md file as it starts, stops, and, if necessary, revisits each work package?  The prompt I gave Claude when I told it to proceed with the work on which we had agreed included "Please update/rewrite PROGRESS.md as you complete each body of work so that, if you are interrupted, a new Claude Code CLI session can pick up where you left off."  I see that PROGRESS.md has been updated.  I see that it has 15 work packages listed.  I see that the status for each work package is listed as "not started".  Yet, I note that work package 2 said to create `src-tauri/src/watcher.rs` and I see that that file has been created.  That implies to me that `claude` must have completed work package 1.  It would be especially interesting to me to see the date & time at which each work package was started (with PROGRESS.md committed with that update) and the date and time at which each work package was completed.  This current session is operating of a PROMPT.md file.  Should I update PROMPT.md with those instructions (and possibly update the table in PROGRESS.md to include the "Started at" and "Completed at" fields in addition to the "Status field)?  What is the recommended best practice for this level of tracking?  (Please keep in mind I am open to being told that the recommended best practice is that this is not considered to be a good practice at all and I should just let it go.)
+```
+
+In the mean time, I'm going to ask Claude to write PROGRESS.md, shut down this vm and tell it to use more of the 24 cores I have on my server.
+
+> >  Update PROGRESS.md with the current exact state of your work so that I can reboot this machine and restart this session.   
