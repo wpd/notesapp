@@ -304,3 +304,12 @@ I was quite surprised to watch Claude Code dig into the source tree analyzing th
 logic.  It ultimately came up with some new tests and some recommended changes, which
 I accepted.  I also updated SPEC.md (and had Claude Code create tests to verify) that
 panes can be split arbitrarily, up to constraints imposed by the canvas size.
+
+### Hmmm... I think I found an inconsistency in the spec
+I just prompted Claude with:
+
+> Is SPEC.md  missing requirements for specifying the mode (Editor, Preview, Reference, or AI Chat) of the different panes?  Is it missing requirements for associating a Preview pane with a specific notes file?  If so, what prompt should I give to Claude Code to add those requirements, and in which phase should they be implemented?
+
+and we discussed various changes to the spec to address this.  The end result is likely
+to be new versions of SPEC.md and ROADMAP.md and a prompt to Claude Code to revisit its
+phase 1 work.  Stay tuned.
