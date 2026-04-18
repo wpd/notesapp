@@ -20,6 +20,10 @@ This specification uses the following terms consistently:
 
 The term *pane* is avoided in this specification; all references are to *tiles*.
 
+### 1.2 Relationship to ROADMAP.md
+
+This specification describes the required behavior of the finished application. It does not prescribe the order in which features are implemented or which subset is delivered in early releases. Those concerns — along with per-phase deliverables, entry and exit criteria, and any simplifying substitutions for incomplete features — are defined in `ROADMAP.md`. When `ROADMAP.md` and `SPEC.md` appear to conflict, `SPEC.md` describes the end state; `ROADMAP.md` describes the path there. Where `ROADMAP.md` specifies a temporary substitute for a spec'd behavior in an intermediate phase, that substitution is explicit in `ROADMAP.md`.
+
 ---
 
 ## 2. Application Architecture
@@ -99,7 +103,7 @@ The application is launched with a project directory as its working context. The
 ~/.config/notesapp/config.toml    # global config: API keys, theme, font, recent projects
 ```
 
-**Launching:** The app reads the `NOTESAPP_PROJECT_DIR` environment variable if set; otherwise it presents a directory-chooser dialog. The full resolution logic — including how the app handles a non-existent leaf, a malformed project, or an inaccessible path — is specified in §6.1.1. A full first-launch wizard (project name, API key, model selection, first note) is implemented in a later phase. On macOS, the app bundle can also be invoked via Finder or the terminal with a path argument.
+**Launching:** The app reads the `NOTESAPP_PROJECT_DIR` environment variable if set; otherwise it presents a directory-chooser dialog. The full resolution logic — including how the app handles a non-existent leaf, a malformed project, or an inaccessible path — is specified in §6.1.1. On macOS, the app bundle can also be invoked via Finder or the terminal with a path argument.
 
 **Notes on git compatibility:** The `notes/` and `references/` directories contain only plain text or binary files with no proprietary lock-in. The user may elect to manage these in a git repository. The `ai-context/` directory contains JSON files that are also git-friendly, giving a recoverable history of AI conversations.
 
@@ -180,7 +184,7 @@ Reference-heavy layout:
 ```
 
 Each tile has a title bar showing its mode and its currently bound buffer. The title bar has:
-- A **mode indicator** (see §4.0.1) — shows the tile's current mode, and on `Editor`, `Preview`, and `AI Chat` tiles also serves as a mode-change affordance
+- A **mode indicator** (see §4.0.1) — shows the tile's current mode. On `Editor` and `Preview` tiles it also serves as a one-click toggle between those two modes (subject to the markdown-only restriction described in §4.0.1).
 - A **buffer name** showing the currently bound file or session, with a **▾ dropdown button** that opens the tile's buffer picker (see §4.0.2)
 - A **close** button (removes the tile; its buffer content is not deleted)
 - A **split horizontal / split vertical** button to divide the tile in two (see §4.0.3)
@@ -225,11 +229,33 @@ Tiles created by splitting an existing tile (`C-x h` or `C-x v`, or the title-ba
 
 These shortcuts never open new tiles — they always operate on the currently focused tile. To create a new tile, split first (`C-x h` / `C-x v`) and then change the mode of one of the resulting halves.
 
-The title-bar mode indicator is also a dropdown affordance on `Editor`, `Preview`, and `AI Chat` tiles: clicking it shows the four user-selectable modes; selecting one has the same effect as the corresponding `C-x n *` shortcut. `Reference` tiles do not offer mode switching via the title-bar mode indicator — mode changes away from `Reference` must use `C-x n *`. This keeps the Reference tile title bar unambiguous with respect to the Reference buffer picker described in §5.3. `Missing` tiles do not offer mode switching at all; their actions are fixed and described in §5.5.
+**Preview mode applies to markdown files only.** If the currently focused tile is in `Editor` mode and its bound buffer is a non-markdown text file (extension other than `.md`), `C-x n p` is a no-op with a brief status-bar message ("Preview is only available for markdown files"). The title-bar toggle described below is disabled in the same situation. All other `C-x n *` shortcuts are always available regardless of the bound buffer's file type.
+
+**Title-bar mode toggle (Editor ↔ Preview only).** On `Editor` and `Preview` tiles, the mode indicator in the title bar is a clickable toggle that switches the tile between `Editor` and `Preview` mode while keeping the currently bound note. This is a convenience for the common case of viewing and editing the same markdown file. The toggle is **disabled (greyed out) when the currently bound file is not a markdown file** (i.e., its extension is not `.md`); a non-markdown file cannot be previewed, so the Preview mode is unavailable for it.
+
+The title-bar indicator on `Reference` and `AI Chat` tiles is a plain label, not a toggle — the title bar does not offer mode switching on those tiles. `Missing` tiles also do not offer mode switching via the title bar; their actions are fixed and described in §5.5.
+
+The full set of mode transitions (including Editor/Preview → Reference or AI Chat, and Reference/AI Chat → anything else) remains available through the `C-x n *` keyboard shortcuts listed above. The title-bar toggle is intentionally narrower than the keyboard shortcuts because switching between an Editor and an AI Chat tile — or any other cross-category switch — is a rare, deliberate operation that should require a deliberate keystroke.
 
 **Canceling a mode-switch picker.** If the user dismisses the picker with `Escape` (or clicks outside it) before selecting a buffer, the mode change is rolled back: the tile reverts to its prior mode and prior bound buffer. Nothing is left unbound as a result of a cancellation.
 
 **Releasing a previously bound buffer.** When a tile's mode or bound buffer changes, the previously bound buffer is released from that tile's perspective. The buffer itself is not closed project-wide — any other tile bound to it is unaffected, and the buffer's Y.Doc (for notes) or in-memory session (for AI Chat) is retained as long as at least one tile is still bound to it.
+
+**Last-tile release of a modified buffer.** If the tile being released (via mode change, buffer switch, tile close, or window/app quit) is the *last* tile bound to a buffer that has unsaved changes, the application must prompt the user before proceeding:
+
+> "`<filename>` has unsaved changes. Save before closing?"
+> `[ Save ]` `[ Discard ]` `[ Cancel ]`
+
+- **Save** writes the buffer to its `.md` file (the same operation as `C-x C-s`), deletes the corresponding `.tmp` file if present, and then proceeds with the release.
+- **Discard** deletes the `.tmp` file (if present) and proceeds with the release; any unsaved edits are lost.
+- **Cancel** aborts the release entirely — the mode change, buffer switch, or tile close does not happen, and the tile remains bound to the buffer.
+
+This prompt applies to every last-tile release that would otherwise lose unsaved work. The sole exceptions are:
+
+- The buffer backs a `Missing` tile whose file has been deleted externally: see §5.5 for that case, which uses a simpler Continue/Cancel confirmation since saving is not meaningful when the underlying file is gone.
+- The user is quitting the application with multiple modified buffers open: the application shows a *consolidated* dialog listing every modified buffer with a per-buffer checkbox for Save vs. Discard, plus a single `Cancel` button that aborts the quit. This avoids forcing the user through five separate dialogs on app quit.
+
+If a buffer is bound to more than one tile, releasing one tile does not trigger the prompt — the buffer is still held by the other tile(s) and no data is at risk. Only the *last* release triggers it.
 
 #### 4.0.2 Tile Buffer Pickers
 
@@ -245,12 +271,12 @@ The picker opens as a floating dialog over the window with a live-filtered text 
 
 | Tile mode | Picker contents |
 |---|---|
-| `Editor` | All `.md` files in `notes/`, plus a `+ New note…` option at the top |
-| `Preview` | All `.md` files in `notes/`, plus a `+ New note…` option at the top |
+| `Editor` | All files in `notes/` (any text file — not restricted by extension), plus a `+ New note…` option at the top |
+| `Preview` | Only `.md` files in `notes/`, plus a `+ New note…` option at the top |
 | `Reference` | All files in `references/` (no "new" option — references are imported via drag-and-drop, not created in-app; see §5.3) |
 | `AI Chat` | All existing AI sessions (listed by human-readable name), plus a `+ New chat…` option at the top |
 
-Selecting `+ New note…` in an Editor or Preview picker prompts the user for a filename (the `.md` extension is added automatically if not specified, per §6.2), creates an empty note on disk, and binds the tile to it. Selecting `+ New chat…` in an AI Chat picker prompts for a human-readable session name, creates a new session with a fresh UUID v4 and empty history (per §5.4), and binds the tile to it.
+Selecting `+ New note…` in an Editor or Preview picker prompts the user for a filename and creates an empty note on disk, then binds the tile to it. In an Editor picker, the user may enter any filename — if no extension is given, `.md` is added automatically (per §6.2); if a non-`.md` extension is given, the file is created with that extension verbatim and the tile opens it as a plain text file. In a Preview picker, the `.md` extension is added automatically when no extension is given, and entering a non-`.md` extension is rejected with an inline message ("Preview mode requires a markdown file; please use a `.md` extension or create this file from an Editor tile instead"). Selecting `+ New chat…` in an AI Chat picker prompts for a human-readable session name, creates a new session with a fresh UUID v4 and empty history (per §5.4), and binds the tile to it.
 
 Selecting an existing item binds the current tile to that buffer, replacing whatever was previously displayed in this tile. Other tiles bound to the previous buffer are unaffected.
 
@@ -301,17 +327,20 @@ The application provides current state-of-the art common usage top level menu ba
 
 ### 4.2 Activity Sidebar
 
-A collapsible sidebar on the left edge of the window (toggled with `Ctrl/Cmd+B`). Sections are added progressively across phases:
+A collapsible sidebar on the left edge of the window (toggled with `Ctrl/Cmd+B`). It contains the following sections, each of which is collapsible:
 
-**Phase 1 — Explorer (notes file list):**
+**Explorer** — notes file list:
 - Flat list of all notes in the project, sorted by modification time (or alphabetically; user-configurable)
 - Browse only — clicking a note does not open it
 - To load a file into a tile: use `C-x b` (buffer switcher) or drag a file from the sidebar onto any tile
 
-**Later phases add:**
-- **Search** — full-text search across all notes and references (§5.5). Results grouped by file with surrounding context lines.
-- **Tags** — browse notes by front-matter tag.
-- **References** — flat list of all files in `references/`.
+**Search** — full-text search across all notes and references (§5.5). Results are grouped by file with surrounding context lines.
+
+**Tags** — browse notes by front-matter tag.
+
+**References** — flat list of all files in `references/`.
+
+The sidebar remembers which sections are open or closed, per project.
 
 **Buffer switcher (`C-x b`) — modal by tile mode:** pressing `C-x b` opens the buffer picker for the currently focused tile, as defined in §4.0.2. The picker's contents depend on the focused tile's mode:
 
@@ -320,11 +349,9 @@ A collapsible sidebar on the left edge of the window (toggled with `Ctrl/Cmd+B`)
 - In a Reference tile: lists files from `references/` (no "new" option)
 - In an AI Chat tile: lists existing AI sessions with a `+ New chat…` option
 
-When invoked in a `Missing` tile, `C-x b` opens the picker for the tile's **prior mode** (the mode the tile was in before the binding broke); selecting a buffer rebinds the tile and returns it to that prior mode. See §5.5.
+When invoked in a `Missing` tile, `C-x b` opens the Editor picker (regardless of what mode the tile was in before the binding broke); selecting a note from that picker rebinds the tile as an Editor tile bound to that note. See §5.5.
 
 Arrow keys navigate the list; `Enter` binds the selected item to the focused tile (replacing its current buffer); `Escape` cancels. If no tile is focused, `C-x b` is a no-op.
-
-Each section in the sidebar is collapsible. The sidebar remembers which sections are open/closed per project.
 
 ### 4.3 Visual Theme and Fonts
 
@@ -465,7 +492,7 @@ The Yjs document is serialized to the `.tmp` markdown file on disk every 30s in 
 - Clicking a rendered LaTeX equation does **not** open a popover — edit LaTeX in an Editor tile bound to the same note; the Preview re-renders instantly
 - Clicking a Mermaid diagram navigates any Editor tile bound to the same note to the correct source line
 
-**Phase 1 note:** The Preview tile is read-only in Phase 1. Tiptap WYSIWYG editing is added in Phase 2. Even in Phase 1, each Preview tile has its own explicit buffer binding per this section — the tile does not track any Editor's focus.
+Each Preview tile has its own explicit buffer binding per this section — the tile does not track any Editor's focus, and it does not auto-follow changes in any other tile.
 
 **Pasting content from an AI Chat tile:**
 - AI responses are rendered markdown. The user can select any portion of an AI response (including rich formatted content — headers, lists, code blocks, tables) and paste it into a Preview tile, preserving formatting via the Tiptap layer, which round-trips it to the note's Y.Text as clean markdown source.
@@ -597,27 +624,27 @@ Claude's context limit is currently 200,000 tokens (~150,000 words), which is la
 **Appearance and behavior:**
 
 - The tile displays a clear message, such as `⚠ File not found: notes/quantum.md` (or the corresponding reference filename or session name).
-- The title bar shows the mode indicator as `⚠ Missing` and displays the missing buffer's name with no dropdown; mode switching and buffer switching are redirected to the actions below (see §4.0.1).
+- The title bar shows the mode indicator as `⚠ Missing` and displays the missing buffer's name with no dropdown; mode switching and buffer switching are redirected to the actions below.
 - The tile is **read-only**. No input is accepted; no autosave timer runs; no `.tmp` file is written from this tile. Any in-memory Y.Doc for a missing note continues to exist as long as at least one tile is bound to it, so unsaved edits are preserved and become writable again as soon as the binding is resolved (see "Locate…" below).
 - The tile offers exactly three buttons:
 
 | Action | Behavior |
 |---|---|
-| **Locate…** | Opens an OS filesystem picker scoped appropriately (`notes/` for Editor/Preview-mode Missing tiles, `references/` for Reference-mode, `ai-context/` for AI Chat-mode). If the user chooses a file, the tile rebinds to that path, returns to its prior mode, and resumes normal behavior. For Editor/Preview, any in-memory Y.Doc for the original path is attached to the new path and will be written there on next save. |
-| **Open a different buffer** | Opens the buffer picker for the tile's **prior mode** (the mode the tile was in before the binding broke), as defined in §4.0.2. Selecting a buffer rebinds the tile and returns it to that prior mode. If the tile had unsaved changes in an in-memory Y.Doc for the missing file, a confirmation dialog appears first: "Unsaved changes for `<filename>` will be discarded. Continue?" `Cancel` returns to the Missing tile without changes. |
-| **Close tile** | Equivalent to `C-x 0` — removes the tile from the layout. If this was the last tile bound to a Y.Doc with unsaved changes, the same confirmation dialog as above appears first. |
+| **Locate…** | Opens an OS filesystem picker scoped to the directory the missing file was recorded in (`notes/` if the broken binding refers to a file under `notes/`, `references/` if under `references/`, `ai-context/` if under `ai-context/`). The scope is derived from the broken binding itself, not from any "prior mode" state. If the user chooses a file, the tile rebinds to that path. For a note rebind, the tile enters `Editor` mode and any in-memory Y.Doc for the original path is attached to the new path and will be written there on next save. For a reference rebind, the tile enters `Reference` mode. For an AI session rebind, the tile enters `AI Chat` mode. |
+| **Open a different buffer** | Opens the `Editor` buffer picker (see §4.0.2). Selecting a note rebinds the tile as an `Editor` tile bound to that note. If the Missing tile had unsaved changes in an in-memory Y.Doc for the missing file, a confirmation dialog appears first: "Unsaved changes for `<filename>` will be discarded. Continue?" (Continue/Cancel only — saving is not meaningful when the underlying file is gone; see §4.0.1 for the distinction from the normal last-tile-release prompt.) `Cancel` returns to the Missing tile without changes. |
+| **Close tile** | Equivalent to `C-x 0` — removes the tile from the layout. If this was the last tile bound to a Y.Doc with unsaved changes, the same Continue/Cancel confirmation dialog as above appears first. |
 
 **Keyboard shortcuts in Missing tiles:**
 
-- `C-x b` opens the buffer picker for the tile's prior mode, equivalent to the "Open a different buffer" button.
-- `C-x n *` mode-switch shortcuts work normally (they change the tile to the requested mode and open the corresponding picker, per §4.0.1).
+- `C-x b` opens the `Editor` buffer picker, equivalent to the "Open a different buffer" button.
+- `C-x n *` mode-switch shortcuts work normally (they change the tile to the requested mode and open the corresponding picker, per §4.0.1). The mode-switch path does not carry the in-memory Y.Doc forward — if the user wants to recover unsaved edits into a different note, they should use "Locate…" and rebind to a different file.
 - `C-x 0` / `C-x w` closes the tile, with the unsaved-changes confirmation as described above.
 - `C-x z` (maximize) and tile numbering (`C-x N`) work normally.
 - All other shortcuts are inactive.
 
-**Persistence:** a `Missing` tile is serialized in `layout.json` with its prior mode and the (now-unresolvable) buffer path/ID. On next launch, if the buffer is resolvable again (the file was restored), the tile opens normally in its prior mode; if still unresolvable, it reopens as `Missing`.
+**Persistence:** a `Missing` tile is serialized in `layout.json` with the (now-unresolvable) buffer path/ID. On next launch, if the buffer is resolvable again (the file was restored), the tile opens normally in the mode implied by the path's location (`notes/` → `Editor`, `references/` → `Reference`, `ai-context/` → `AI Chat`); if still unresolvable, it reopens as `Missing`.
 
-**Splitting:** splitting a `Missing` tile (`C-x h` / `C-x v`) produces two `Missing` tiles with the same prior mode and broken binding. The user can then resolve each independently.
+**Splitting:** splitting a `Missing` tile (`C-x h` / `C-x v`) produces two `Missing` tiles sharing the same broken binding. The user can then resolve each independently.
 
 **Relationship to the pin mechanism (§4.4):** if the pinned Editor tile enters `Missing` mode, the pin is discarded at that moment. The pin icon is not displayed on `Missing` tiles. Subsequent "Insert into note" operations will therefore fall through to the target picker described in §4.4.
 
@@ -627,7 +654,7 @@ Claude's context limit is currently 200,000 tokens (~150,000 words), which is la
 
 ### 6.1 First Launch and Project Detection
 
-At launch, the application must determine which project directory to open. The inputs to this decision are the `NOTESAPP_PROJECT_DIR` environment variable (if set) and, on macOS, a directory path passed as a command-line argument to the app bundle. The resolution logic is the same across all phases; the user-visible fallback behavior differs between Phase 1 (terminal console message + directory chooser) and Phase 6 (in-app wizard). §6.1.1 defines the resolution matrix; §6.1.2 defines the Phase 1 simplifications; §6.1.3 defines the Phase 6 wizard.
+At launch, the application must determine which project directory to open. The inputs to this decision are the `NOTESAPP_PROJECT_DIR` environment variable (if set) and, on macOS, a directory path passed as a command-line argument to the app bundle. §6.1.1 defines the resolution matrix; §6.1.2 defines behavior when the given path cannot be used; §6.1.3 specifies the new-project wizard.
 
 #### 6.1.1 `NOTESAPP_PROJECT_DIR` Resolution
 
@@ -635,6 +662,7 @@ When the environment variable (or equivalent command-line path argument) is set,
 
 | Case | State of the path | Classification |
 |---|---|---|
+| A | The environment variable is unset and no command-line path was given | **No path given** — proceed to the startup screen / directory chooser (see §6.1.2) |
 | B | Path exists, is a directory, contains a well-formed `.notesapp/project.toml` | **Valid project** — open it directly |
 | C | Path exists, is a directory, does **not** contain a `.notesapp/` directory | **Uninitialized directory** — scaffold it as a new project (see below) |
 | D | Path does **not** exist; its parent directory exists and is writable by the current user | **Non-existent leaf** — create the leaf with `mkdir`, then scaffold it as a new project (same as case C) |
@@ -644,70 +672,46 @@ When the environment variable (or equivalent command-line path argument) is set,
 | H | Path exists, is a directory, contains a `.notesapp/` directory but no `project.toml` file inside it | **Suspicious state** — cannot proceed at this path |
 | I | Path exists, is a directory, but is not writable by the current user | **Read-only directory** — cannot proceed at this path |
 
-When the environment variable is unset (case A), the application proceeds directly to the phase-appropriate fallback behavior (§6.1.2 or §6.1.3).
-
 **Scaffolding a new project (cases C and D):** create the directory structure as a new NotesApp project:
+
 - Create `.notesapp/` and write a default `project.toml` with the project name set to the directory's basename and all other fields at their defaults.
 - Create `notes/`, `references/`, and `attachments/` subdirectories.
-- Create `notes/untitled.md` containing only the standard front-matter block (title defaulting to `"untitled"`, `created` and `modified` set to the current time, empty `tags` list). This first note is required to uphold the "always bound" invariant (§4.0.1) — the default layout's initial Editor and Preview tiles must both have a buffer to bind to.
+- Create the first note as an empty `.md` file containing only the standard front-matter block (title defaulting to the filename stem, `created` and `modified` set to the current time, empty `tags` list). This first note is required to uphold the "always bound" invariant (§4.0.1) — the default layout's initial Editor and Preview tiles must both have a buffer to bind to. When the scaffold is driven by the new-project wizard (§6.1.3), the wizard collects the first note's filename from the user; when the scaffold is driven by `NOTESAPP_PROJECT_DIR` in cases C and D without the wizard, the first note defaults to `notes/untitled.md`.
 - Scaffolding only creates new paths; it never modifies, overwrites, or deletes any pre-existing files in the directory. If a user's existing file happens to collide with a path the scaffold would create (e.g., a pre-existing `notes/untitled.md`), the scaffold aborts with an error treated as case G/H (cannot proceed).
 
-**Cases E, F, G, H, I:** the application cannot safely use the given path. The specific handling differs by phase:
+**In no case does the application modify or "repair" on-disk state in cases E through I.** The principle is: when the env var points to something unexpected, never silently alter it.
 
-- **Phase 1** (§6.1.2): emit a debug message to `stderr` identifying the path and the specific reason, then fall through to the directory-chooser dialog.
-- **Phase 6** (§6.1.3): surface the failure in the in-app wizard, offering the user the choice to pick a different directory or create a new project elsewhere.
+#### 6.1.2 Behavior When the Path Cannot Be Used
 
-In no case does the application modify or "repair" on-disk state in cases E through I. The principle is: when the env var points to something unexpected, never silently alter it.
+When the resolution in §6.1.1 produces cases E, F, G, H, or I — or when the path is usable but the user cancels a subsequent prompt — the application surfaces the failure and gives the user a way forward. The required behavior is:
 
-#### 6.1.2 Phase 1 Behavior
-
-Phase 1 uses a simplified startup flow without the full wizard.
-
-**When `NOTESAPP_PROJECT_DIR` is set:** the application applies the resolution logic in §6.1.1:
-- Cases B, C, D → open or scaffold as described; proceed to the main window with the default two-tile layout (Editor + Preview both bound to the first note).
-- Cases E, F, G, H, I → emit a single-line message to `stderr` of the form:
-
-  ```
-  NOTESAPP_PROJECT_DIR=<path>: <reason>; falling back to directory chooser
-  ```
-
-  where `<reason>` is a short human-readable explanation of which case applied (e.g., `parent directory not found`, `path is a file, not a directory`, `.notesapp/project.toml is malformed (TOML parse error)`, `.notesapp/ directory is missing project.toml`, `directory is not writable`). The application then presents the directory-chooser dialog as if `NOTESAPP_PROJECT_DIR` had been unset.
-
-  The message is written to `stderr` so that users who launched from a terminal see it; users who launched from a GUI (Finder, Dock, desktop launcher) will not see the message but will see the chooser appear, which is the visible fallback behavior.
-
-**When `NOTESAPP_PROJECT_DIR` is not set (case A):** the application presents a directory-chooser dialog. Whatever directory the user picks is then processed through §6.1.1 cases B, C, or D. (A user-picked path should not land in cases E–I in practice: E is impossible because the user can only pick an existing directory, F is impossible for the same reason, and G/H/I remain possible only if the user explicitly picks a broken existing project — in which case, for Phase 1, the application also emits the stderr message and reopens the chooser.)
-
-No full wizard is shown in Phase 1. Project creation in cases C and D is silent — the scaffold is created, the default layout opens, and the user begins work immediately.
-
-#### 6.1.3 Phase 6 Wizard
-
-Phase 6 replaces the Phase 1 stderr-and-chooser fallback with an in-app wizard that handles both new-project creation and the "unable to open existing project" cases (E, F, G, H, I from §6.1.1).
-
-The application is launched with a directory as its argument — either from the terminal (`notesapp ~/research/qft`) or by opening the app bundle when a directory is already the current working directory. On macOS, the app can also be launched via Finder or the Dock, in which case it opens a directory-chooser dialog on startup.
-
-**On launch, the application applies the resolution logic in §6.1.1:**
-
-- **Case B (valid project):** open the project normally, restore the saved layout.
-- **Cases C and D (uninitialized directory or non-existent leaf with accessible parent):** launch the new-project wizard pre-populated with this directory as the target. The user confirms or edits the project details and proceeds; on completion, the scaffold is created and the project opens.
-- **Cases E, F, G, H, I (unable to use this path):** display a modal dialog identifying the specific problem, with two options:
+- **Display a modal dialog** identifying the specific problem, with two options:
   > "Unable to open a project at `<path>`: `<reason>`. Would you like to create a new project elsewhere, or choose a different existing project?"
   > `[ Create new project… ]` `[ Choose a different directory ]`
   >
-  > `Create new project…` opens the new-project wizard without a pre-populated directory (the user will pick or enter the target directory within the wizard). `Choose a different directory` opens the directory-chooser dialog.
-- **Case A (env var unset and no command-line path):** the startup screen lists recent projects (see "Subsequent launches" below) and offers `Open Project…` and `Create New Project…` buttons.
+  > `<reason>` is a short human-readable explanation of which case applied (e.g., `parent directory not found`, `path is a file, not a directory`, `.notesapp/project.toml is malformed (TOML parse error)`, `.notesapp/ directory is missing project.toml`, `directory is not writable`).
+  >
+  > `Create new project…` opens the new-project wizard (§6.1.3) without a pre-populated directory — the user picks or enters the target directory within the wizard. `Choose a different directory` opens the directory-chooser dialog.
+- **When the environment variable is unset (case A):** the application shows a startup screen listing recent projects (see "Subsequent launches" below) and offers `Open Project…` and `Create New Project…` buttons.
 
-**New project wizard** (triggered by cases C/D, by the case-E/F/G/H/I dialog, by `File → New Project`, or by `Create New Project…` on the startup screen):
-1. Confirm or edit the **target directory** (pre-populated from the launch path when applicable; otherwise prompted for via a directory picker; the path is validated against §6.1.1 before the wizard proceeds).
-2. Confirm or edit the project **name** (defaults to the directory name).
-3. Optionally add a **description**.
-4. Optionally enter the **Claude API key** — the app stores it in the macOS Keychain immediately; the field is masked; can be skipped and configured later in settings.
-5. Select the default **AI model**.
-6. Optionally paste or write a **system prompt** for the AI.
-7. Enter a **first note filename** (defaults to `untitled.md`). The `.md` extension is added automatically if not specified (per §6.2). This note is required — the wizard does not allow it to be empty, because the default layout's initial Editor and Preview tiles must both have a buffer to bind to (§4.0.1). The user can rename or delete this note later.
-8. `[ Create Project ]` — writes `.notesapp/project.toml`, creates `notes/`, `references/`, `attachments/`, creates the first note as an empty `.md` file containing only the standard front-matter block, and opens the main window with a default two-tile layout (Editor + Preview) both bound to the first note.
+#### 6.1.3 New Project Wizard
+
+The new-project wizard is triggered by cases C and D of §6.1.1 (with the directory pre-populated), by the "unable to open" dialog in §6.1.2, by `File → New Project`, or by `Create New Project…` on the startup screen.
+
+The wizard collects, in order:
+
+1. **Target directory** (pre-populated from the launch path when applicable; otherwise prompted for via a directory picker; the path is validated against §6.1.1 before the wizard proceeds).
+2. Project **name** (defaults to the directory name).
+3. Optional **description**.
+4. Optional **Claude API key** — the app stores it in the macOS Keychain immediately; the field is masked; can be skipped and configured later in settings.
+5. Default **AI model**.
+6. Optional **system prompt** for the AI.
+7. **First note filename** (defaults to `untitled.md`). The `.md` extension is added automatically if not specified (per §6.2). This note is required — the wizard does not allow it to be empty, because the default layout's initial Editor and Preview tiles must both have a buffer to bind to (§4.0.1). The user can rename or delete this note later.
+8. `[ Create Project ]` — writes `.notesapp/project.toml`, creates `notes/`, `references/`, `attachments/`, creates the first note as described in §6.1.1 above, and opens the main window with a default two-tile layout (Editor + Preview) both bound to the first note.
 
 **Subsequent launches:**
-- Recent projects are listed on a startup screen (if no directory argument is given and `NOTESAPP_PROJECT_DIR` is unset) and in `File → Open Recent`, stored in `~/.config/notesapp/config.toml`.
+
+- Recent projects are listed on a startup screen (when no directory argument is given and `NOTESAPP_PROJECT_DIR` is unset) and in `File → Open Recent`, stored in `~/.config/notesapp/config.toml`.
   - Recent projects can be deleted from the list by clicking on a muted "x" icon shown to the right of the project name.
 - The last-used layout is restored from `.notesapp/layout.json`. Any tile whose bound buffer cannot be resolved opens in `Missing` mode (§5.5).
 
@@ -840,23 +844,7 @@ Specific requirements flowing from these:
 
 ---
 
-## 10. Phased Implementation Roadmap
-
-See `ROADMAP.md` for the full phased plan. Summary:
-
-| Phase | Scope |
-|---|---|
-| 1 | Skeleton: Editor + Preview tiles, tiling layout, theme, tile mode & buffer binding model, `Missing` mode, all three test layers |
-| 2 | WYSIWYG Preview (Tiptap) + drawing blocks (Excalidraw) |
-| 3 | Reference tile + full-text search (Tantivy) |
-| 4 | AI Chat tile + Claude API integration |
-| 5 | Advanced editor features (macros, rectangles, table editing, folding) |
-| 6 | Project lifecycle, settings, first-launch wizard, dark mode |
-| 7 | Export, PDF annotations, accessibility, performance, macOS packaging |
-
----
-
-## 11. Out of Scope (v1)
+## 10. Out of Scope (v1)
 
 - Real-time collaboration / multiplayer
 - Mobile or tablet clients

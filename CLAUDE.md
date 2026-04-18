@@ -15,6 +15,14 @@ The canonical product specification is `SPEC.md` at the repository root.
 When this file and `SPEC.md` conflict, `SPEC.md` wins — flag the conflict
 rather than silently resolving it.
 
+The phased implementation plan is `ROADMAP.md`. When Claude Code is about
+to implement something that appears simpler or more limited than SPEC.md
+requires, check `ROADMAP.md` for an explicit phase substitution before
+assuming the spec is wrong. Phase substitutions — e.g., Phase 1's read-only
+Preview tile, or Phase 1's `stderr` fallback for `NOTESAPP_PROJECT_DIR`
+resolution failures — are declared explicitly in `ROADMAP.md` under each
+phase's "Phase N Substitutions" heading.
+
 ---
 
 ## 2. Repository Layout
@@ -84,6 +92,7 @@ Do not substitute these without an explicit instruction from the user.
 | Build tool | Vite |
 | Frontend tests | Vitest |
 | E2E tests | WebdriverIO + Tauri WebDriver |
+| File watcher (Rust) | `notify` crate (debounced) |
 | Fonts | JetBrains Mono (editor), Inter (prose/chat) — bundled in `public/fonts/` |
 
 ---
@@ -161,10 +170,17 @@ Every feature must be covered at the appropriate layer(s):
 
 **Layer 1 — Rust unit tests (`cargo test`)**
 - All file I/O logic
+- `NOTESAPP_PROJECT_DIR` resolution (SPEC.md §6.1.1) — every case A–I
+- Project scaffolding (SPEC.md §6.1.1) — creates `.notesapp/`, `notes/`,
+  `references/`, `attachments/`, and the first note; aborts on collision
+- File watcher integration (SPEC.md §2.3) — emits expected events on
+  delete and rename
 - Search index (Tantivy) operations
 - AI proxy / streaming logic
-- Config parsing
+- Config parsing, including malformed `project.toml` (case G)
 - Markdown front-matter parsing
+- Layout JSON serialization including tile mode, buffer binding, and
+  unresolvable (Missing) bindings
 - Any pure function in the Rust backend
 
 **Layer 2 — Vitest frontend unit tests (`npm run test:unit`)**
@@ -172,15 +188,33 @@ Every feature must be covered at the appropriate layer(s):
 - Zustand store logic
 - Yjs CRDT bridge / markdown↔ProseMirror translation
 - CodeMirror extension behavior
+- Tile mode model (SPEC.md §4.0.1): split inheritance, mode-switch
+  shortcuts, Editor↔Preview title-bar toggle, markdown-only Preview
+  restriction, cancel-mode-switch rollback
+- Buffer picker contents per mode (SPEC.md §4.0.2)
+- Last-tile release of modified buffer (SPEC.md §4.0.1): Save, Discard,
+  Cancel, and the consolidated app-quit dialog
+- Missing-tile recovery (SPEC.md §5.5): Locate scope derivation,
+  Open-a-different-buffer opens Editor picker, Continue/Cancel on
+  unsaved changes
+- "Insert into note" target resolution (SPEC.md §4.4)
 - Utility functions and hooks
 
 **Layer 3 — WebdriverIO E2E tests (`npm run test:e2e`)**
 - App launches and renders the main window
-- Pane splitting (horizontal and vertical) works correctly
-- Files open in the correct pane
-- Editor keystrokes appear in the preview pane
+- Each `NOTESAPP_PROJECT_DIR` resolution case produces the correct
+  startup behavior
+- Tile splitting (horizontal and vertical) inherits parent mode and
+  buffer
+- Files open in the correct tile
+- Editor keystrokes appear in a Preview tile bound to the same note
+- A Preview tile bound to a *different* note is unaffected by edits
+  elsewhere
 - Keyboard shortcuts function as specified
+- Mid-session external file deletion transitions bound tiles to
+  `Missing` mode via the file watcher
 - Primary note pin/unpin behavior
+- Layout persistence across restart
 - Any workflow that crosses the Rust/frontend boundary
 
 ### 5.2 Test-First Discipline
@@ -269,7 +303,7 @@ Both fonts are bundled in `public/fonts/` and loaded via `@font-face` in `tokens
 Do not rely on system font availability.
 
 ```css
---font-editor:   'JetBrains Mono', monospace;   /* editor pane */
+--font-editor:   'JetBrains Mono', monospace;   /* editor tile */
 --font-prose:    'Inter', sans-serif;            /* preview, chat, UI chrome */
 --font-size-editor-default: 14px;
 --font-size-prose-default:  16px;
@@ -277,15 +311,32 @@ Do not rely on system font availability.
 
 ### 7.3 Tile Title Bar
 
-Each tile has a title bar with:
-- File name (truncated with ellipsis if needed)
-- Pane type badge (subtle, muted text)
-- Pin/star icon (⭐ unpinned → 📌 pinned) — only visible on Editor tiles
-- Split horizontal / split vertical buttons
-- Maximize / restore button
-- Close button
+Every tile has a title bar containing these elements, in order, per SPEC.md §4.0:
 
-The title bar background is `--color-surface-dark` with `--color-text-primary` at reduced opacity.
+- **Mode indicator.** Shows the tile's current mode (`Editor`, `Preview`,
+  `Reference`, `AI Chat`, or `⚠ Missing`). On Editor and Preview tiles it
+  is a clickable toggle that switches the tile between those two modes
+  (subject to the markdown-only restriction in SPEC.md §4.0.1 — greyed
+  out when the bound file is not `.md`). On Reference, AI Chat, and
+  Missing tiles the indicator is a plain label, not interactive.
+- **Buffer name** with a **▾ dropdown button** that opens the tile's
+  buffer picker (SPEC.md §4.0.2). The buffer name is the filename for
+  Editor/Preview/Reference tiles, the human-readable session name for
+  AI Chat tiles. The dropdown is absent on Missing tiles — mode and
+  buffer switching there are redirected to the tile's three recovery
+  action buttons per SPEC.md §5.5. File names are truncated with an
+  ellipsis if needed.
+- **Pin/star icon** (Editor tiles only — not Preview, Reference, AI
+  Chat, or Missing): ⭐ unpinned → 📌 pinned.
+- **Split horizontal / split vertical** buttons.
+- **Maximize / restore** button.
+- **Close** button.
+
+The title bar background is `--color-surface-dark` with
+`--color-text-primary` at reduced opacity.
+
+A dirty indicator (`•`) appears next to the buffer name when the bound
+buffer has unsaved changes (Editor and Preview tiles only).
 
 ---
 
@@ -293,55 +344,121 @@ The title bar background is `--color-surface-dark` with `--color-text-primary` a
 
 These decisions resolve open questions or ambiguities in SPEC.md:
 
-### 8.1 Primary Note ("Insert into Note" target)
+### 8.1 Tile Modes and Buffer Binding (SPEC.md §4.0.1)
 
-When the user clicks "Insert into note" in the AI Chat pane, the target is the
-**primary note** — the Editor tile that is currently pinned.
+Every tile has exactly one **mode** (`Editor`, `Preview`, `Reference`,
+`AI Chat`, or `Missing`) and is bound to exactly one **buffer** at all
+times. The application must never produce an unbound tile through any
+user action — this is the "always bound" invariant. `Missing` is the
+sole non-user-selectable mode and represents a broken binding, not an
+unbound tile.
 
-- The pin is toggled with `C-x p` or by clicking the pin icon in the tile title bar
-- Only one Editor tile can be pinned at a time; pinning a new tile unpins the previous one
-- If no tile is pinned, "Insert into note" targets the most recently focused Editor tile
-- The pin icon is **only shown on Editor tiles** (not Preview, Reference, or AI Chat tiles)
-- The pin state is transient — it is not persisted across sessions
+Key rules flowing from this:
 
-### 8.2 Activity Sidebar — Skeleton Scope
+- Splitting a tile (`C-x h`, `C-x v`, title-bar split buttons) produces
+  two tiles that both inherit the parent's mode and bound buffer.
+- Changing a tile's mode (`C-x n n`, `C-x n p`, `C-x n r`, `C-x n c`)
+  immediately opens the mode-appropriate buffer picker so the user
+  selects a new buffer. Canceling the picker rolls back the mode change.
+- The title-bar mode indicator is a one-click toggle *only* between
+  Editor and Preview (SPEC.md §4.0.1). Cross-category switches (e.g.,
+  Editor → AI Chat) require the `C-x n *` keyboard shortcuts.
+- Preview mode is markdown-only. The Editor↔Preview toggle is greyed
+  out, and `C-x n p` is a no-op with a status-bar message, when the
+  bound file's extension is not `.md`.
 
-Phase 1 implements only the **Explorer section** of the activity sidebar:
-a flat list of all notes in `notes/`, sorted by modification time.
-Search, Tags, and References sections are added in later phases.
+### 8.2 Last-Tile Release of a Modified Buffer (SPEC.md §4.0.1)
 
-Interaction model: the sidebar is **browse only**. Clicking a file does not open it.
-To load a file into a pane, use `C-x b` (buffer switcher) or drag from sidebar to pane.
+When a tile's mode changes, buffer changes, tile is closed, or window
+is closed, and that tile was the *last* tile bound to a modified
+buffer, the application must prompt: Save / Discard / Cancel. Cancel
+aborts the release entirely. On app quit with multiple modified
+buffers, a single consolidated dialog lists them with per-buffer
+Save/Discard checkboxes.
 
-### 8.3 Project Directory — Skeleton Scope
+Missing-tile recovery uses a simpler Continue/Cancel prompt (saving is
+not meaningful when the underlying file is gone) — see SPEC.md §5.5.
 
-Phase 1 does not implement the full first-launch wizard. Instead:
-- The app reads `NOTESAPP_PROJECT_DIR` environment variable if set
-- Falls back to a simple directory-chooser dialog on startup
-- The full wizard (§6.1 of SPEC.md) is implemented in a later phase
+### 8.3 Primary Note ("Insert into Note" target) (SPEC.md §4.4)
 
-### 8.4 Tauri vs Electron
+When the user clicks "Insert into note" in an AI Chat tile, the target is
+the **primary note** — the Editor tile that is currently pinned.
+
+- The pin is toggled with `C-x p` or by clicking the pin icon in the tile title bar.
+- Only one Editor tile can be pinned at a time; pinning a new tile unpins the previous one.
+- The pin icon is **only shown on Editor tiles** (not Preview, Reference, AI Chat, or Missing tiles).
+- The pin state is transient — it is not persisted across sessions.
+- If no tile is pinned, or the pinned tile has entered `Missing` mode,
+  "Insert into note" opens a target picker listing all open Editor
+  tiles (with their bound note filenames and tile numbers) so the user
+  explicitly selects the destination.
+- If no Editor tiles are open, the target picker offers a `+ New note…`
+  option that creates a new note and a new Editor tile bound to it.
+
+The application does **not** maintain "most recently focused Editor
+tile" state — the pin mechanism and the target picker are the only
+paths to "Insert into note."
+
+### 8.4 Activity Sidebar Contents (SPEC.md §4.2)
+
+The sidebar contains four sections (Explorer, Search, Tags, References),
+each collapsible, with per-project memory of which sections are open.
+Interaction model is **browse only** — clicking a file does not open it.
+To load a file into a tile, use `C-x b` or drag from the sidebar onto
+a tile.
+
+The order in which these sections are implemented is specified in
+`ROADMAP.md`, not here. Claude Code should check ROADMAP.md for the
+current phase's sidebar deliverables rather than assuming all four
+sections exist in every phase.
+
+### 8.5 `NOTESAPP_PROJECT_DIR` Resolution (SPEC.md §6.1.1)
+
+The env var resolves through a case-based matrix (A–I) defined in
+SPEC.md §6.1.1. Broad strokes:
+- Valid project directory → open it.
+- Uninitialized existing directory or non-existent leaf with accessible
+  parent → scaffold it as a new project.
+- Inaccessible, non-directory, malformed, or read-only path → show the
+  "unable to open" dialog (SPEC.md §6.1.2).
+
+Phase 1 substitutes a `stderr` message plus directory-chooser fallback
+for the "unable to open" dialog; see ROADMAP.md for that substitution.
+Phase 6 implements the full dialog.
+
+### 8.6 Tauri vs Electron
 
 Tauri v2 is the confirmed choice. Do not revisit this.
 
 ---
 
-## 9. Keyboard Shortcuts Reference (subset for Phase 1)
+## 9. Keyboard Shortcuts Reference
 
-All shortcuts in SPEC.md §4.1 apply. The following are essential for Phase 1:
+All shortcuts in SPEC.md §4.1 apply. The following are the most
+essential for day-to-day development work on the app:
 
 | Shortcut | Action |
 |---|---|
-| `C-x o` | Focus next pane |
-| `C-x h` | Split current pane horizontally |
-| `C-x v` | Split current pane vertically |
-| `C-x 0` | Close current pane |
-| `C-x z` | Maximize / restore current pane |
-| `C-x b` | Buffer switcher (open file in focused pane) |
+| `C-x o` | Focus next tile |
+| `C-x O` | Focus previous tile |
+| `C-x h` | Split current tile horizontally (halves inherit mode/buffer) |
+| `C-x v` | Split current tile vertically (halves inherit mode/buffer) |
+| `C-x 0` / `C-x w` | Close current tile (with Save/Discard/Cancel on last-tile release of a modified buffer) |
+| `C-x z` | Maximize / restore current tile |
+| `C-x b` | Buffer switcher for the focused tile's mode (Editor picker in a Missing tile) |
 | `C-x C-s` | Save current note |
-| `C-x C-f` | Open note by name |
+| `C-x C-f` | Open note by name (in a focused Editor tile) |
+| `C-x C-r` | Open reference by name (in a focused Reference tile) |
+| `C-x n n` | Set current tile mode to **Editor** and open a note |
+| `C-x n p` | Set current tile mode to **Preview** and open a note (no-op on non-`.md` files) |
+| `C-x n r` | Set current tile mode to **Reference** and open a reference document |
+| `C-x n c` | Set current tile mode to **AI Chat** and open (or create) a session |
 | `C-x p` | Toggle pin on current Editor tile |
 | `Cmd+B` / `Ctrl+Shift+B` | Toggle activity sidebar |
+| `Ctrl/Cmd+Shift+F` | Global project search |
+
+Note the Editor↔Preview toggle in the tile title bar is a one-click
+equivalent of `C-x n n` / `C-x n p` on markdown-bound tiles.
 
 Emacs bindings in the CodeMirror editor are implemented via
 `@replit/codemirror-emacs` or equivalent. See SPEC.md §5.1 for the full list.
@@ -350,15 +467,29 @@ Emacs bindings in the CodeMirror editor are implemented via
 
 ## 10. What Claude Code Must Never Do
 
-- **Never ask the user to manually test something** that a test could verify
-- **Never `unwrap()` or `panic!()` on user-facing Rust paths**
-- **Never hardcode hex colors in component files** — always use CSS variables
-- **Never silently discard user text** — autosave and crash recovery are non-negotiable
-- **Never leave a `TODO` without filing it as a known issue** in `ISSUES.md`
-- **Never commit with failing tests** — `npm run test` must pass
-- **Never use `any` in TypeScript**
-- **Never use system fonts** — always use bundled JetBrains Mono / Inter
-- **Never use `cargo clippy` warnings** — zero warnings policy
+- **Never produce an unbound tile.** Every tile has a mode and a bound
+  buffer at all times (SPEC.md §4.0.1). The only mode without a
+  resolved buffer is `Missing`, which the application enters
+  automatically when a binding breaks — it is not a user-selectable
+  state.
+- **Never silently discard user text.** Autosave, crash recovery, and
+  the last-tile-release Save/Discard/Cancel prompt are non-negotiable.
+- **Never silently "repair" an unexpected on-disk project state.** When
+  `NOTESAPP_PROJECT_DIR` points to a malformed project, a non-directory,
+  or a broken `.notesapp/` structure, the application reports the
+  specific problem and lets the user choose — it does not overwrite,
+  migrate, or delete.
+- **Never ask the user to manually test something** that a test could verify.
+- **Never `unwrap()` or `panic!()` on user-facing Rust paths.**
+- **Never hardcode hex colors in component files** — always use CSS variables.
+- **Never leave a `TODO` without filing it as a known issue** in `ISSUES.md`.
+- **Never commit with failing tests** — `npm run test` must pass.
+- **Never use `any` in TypeScript.**
+- **Never use system fonts** — always use bundled JetBrains Mono / Inter.
+- **Never ship `cargo clippy` warnings** — zero warnings policy.
+- **Never use "pane" in new code or documentation.** The canonical term
+  is "tile" (SPEC.md §1.1). If you encounter "pane" in existing code or
+  comments during a task, update it.
 
 ---
 
@@ -367,12 +498,16 @@ Emacs bindings in the CodeMirror editor are implemented via
 When you complete a task:
 1. State which tests you ran and their results (paste the summary line)
 2. List any new files created
-3. List any SPEC.md decisions you had to interpret (flag ambiguities)
-4. List anything deferred to a later phase
+3. List any SPEC.md or ROADMAP.md decisions you had to interpret (flag ambiguities)
+4. List anything deferred to a later phase, with a pointer to the relevant
+   ROADMAP.md phase substitution if one is in effect
 
 When you are uncertain about a product decision, stop and ask.
-Do not make assumptions about UX behavior — the spec is detailed enough
-that most questions are answerable from it. If the spec is silent, say so.
+Do not make assumptions about UX behavior — SPEC.md is detailed enough
+that most questions are answerable from it. If SPEC.md is silent, say so
+rather than inventing behavior. If your planned implementation appears
+to deviate from SPEC.md, check ROADMAP.md first for an explicit phase
+substitution before treating the spec as wrong.
 
 
 ---
