@@ -122,10 +122,10 @@ export default function TileBar({
         </button>
       )}
 
-      {/* Split horizontal */}
+      {/* Split horizontal (horizontal divider = top/bottom) */}
       <button
         data-testid={`tile-split-h-${tileId}`}
-        onClick={() => splitTile(tileId, "row")}
+        onClick={() => splitTile(tileId, "column")}
         title="Split pane horizontally (C-x h)"
         style={btnStyle(false)}
         aria-label="Split horizontal"
@@ -133,10 +133,10 @@ export default function TileBar({
         ⊟
       </button>
 
-      {/* Split vertical */}
+      {/* Split vertical (vertical divider = side by side) */}
       <button
         data-testid={`tile-split-v-${tileId}`}
-        onClick={() => splitTile(tileId, "column")}
+        onClick={() => splitTile(tileId, "row")}
         title="Split pane vertically (C-x v)"
         style={btnStyle(false)}
         aria-label="Split vertical"

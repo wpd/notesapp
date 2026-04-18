@@ -79,6 +79,34 @@ describe("layoutStore", () => {
       );
       expect(newTiles.length).toBe(2);
     });
+
+    it("supports deeply nested splits (8 levels) without depth limit", () => {
+      useLayoutStore.getState().initDefaultLayout();
+
+      let currentId = Object.values(useLayoutStore.getState().tiles).find(
+        (t) => t.type === "editor",
+      )!.id;
+
+      const depth = 8;
+      for (let i = 0; i < depth; i++) {
+        const direction = i % 2 === 0 ? "row" : "column";
+        useLayoutStore.getState().splitTile(currentId, direction as "row" | "column");
+        currentId = useLayoutStore.getState().focusedTileId!;
+        expect(currentId).toBeDefined();
+      }
+
+      const leaves = getLeaves(useLayoutStore.getState().mosaicTree!);
+      expect(leaves.length).toBe(2 + depth);
+
+      function measureDepth(node: unknown): number {
+        if (typeof node === "string") return 0;
+        const n = node as { first: unknown; second: unknown };
+        return 1 + Math.max(measureDepth(n.first), measureDepth(n.second));
+      }
+
+      const treeDepth = measureDepth(useLayoutStore.getState().mosaicTree);
+      expect(treeDepth).toBe(1 + depth);
+    });
   });
 
   describe("closeTile", () => {

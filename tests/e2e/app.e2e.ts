@@ -589,6 +589,166 @@ describe("Save (C-x C-s)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Multi-level split: horizontal then vertical
+//
+// Regression test for the split-direction mapping.  The user scenario:
+//   1. Start with the default 2-tile layout (editor | preview).
+//   2. Focus the left pane (editor), split horizontally (C-x h).
+//      Expected: a horizontal divider → top-left editor + bottom-left editor.
+//   3. Focus the bottom-left pane, split vertically (C-x v).
+//      Expected: a vertical divider → two panes side-by-side in the bottom-left.
+//
+// Final tree:
+//   row {
+//     column {
+//       editor-A,                          ← top-left
+//       row { editor-B, editor-C }         ← bottom-left pair
+//     },
+//     preview-D                            ← right (unchanged)
+//   }
+// ---------------------------------------------------------------------------
+
+describe("Multi-level split: horizontal then vertical", () => {
+  before(async () => {
+    // Reset to a clean 2-tile layout by closing extra tiles.
+    let count = await getTileCount();
+    while (count > 2) {
+      await clickFirstTile();
+      await browser.pause(100);
+      await sendCxChord("0");
+      await browser.pause(500);
+      count = await getTileCount();
+    }
+  });
+
+  it("starts with exactly 2 tiles (editor | preview)", async () => {
+    const count = await getTileCount();
+    expect(count).toBe(2);
+  });
+
+  it("C-x h on the left editor creates a top/bottom split (horizontal divider)", async () => {
+    await clickFirstTileOfType("editor");
+    await browser.pause(200);
+
+    await sendCxChord("h");
+    await browser.pause(800);
+
+    const count = await getTileCount();
+    expect(count).toBe(3);
+
+    // Validate the persisted tree structure.
+    const projectDir = process.env.NOTESAPP_E2E_PROJECT_DIR;
+    expect(projectDir).toBeDefined();
+    const layoutPath = path.join(projectDir!, ".notesapp", "layout.json");
+    const persisted = JSON.parse(fs.readFileSync(layoutPath, "utf-8")) as {
+      tree: { direction: string; first: unknown; second: unknown };
+    };
+
+    // Top level is still a row (left half | right half).
+    expect(persisted.tree.direction).toBe("row");
+    // Left subtree is now a column split (top/bottom = horizontal divider).
+    expect(typeof persisted.tree.first).toBe("object");
+    const leftSplit = persisted.tree.first as { direction: string };
+    expect(leftSplit.direction).toBe("column");
+    // Right side (preview) is still a leaf.
+    expect(typeof persisted.tree.second).toBe("string");
+  });
+
+  it("C-x v on the bottom-left editor creates a left/right split (vertical divider)", async () => {
+    // After the previous split, the new bottom-left tile is auto-focused.
+    await sendCxChord("v");
+    await browser.pause(800);
+
+    const count = await getTileCount();
+    expect(count).toBe(4);
+
+    // Validate tree structure.
+    const projectDir = process.env.NOTESAPP_E2E_PROJECT_DIR!;
+    const layoutPath = path.join(projectDir, ".notesapp", "layout.json");
+    const persisted = JSON.parse(fs.readFileSync(layoutPath, "utf-8")) as {
+      tree: {
+        direction: string;
+        first: { direction: string; first: unknown; second: unknown };
+        second: unknown;
+      };
+    };
+
+    // Top level: row.
+    expect(persisted.tree.direction).toBe("row");
+    // Left subtree: column (from previous split).
+    expect(persisted.tree.first.direction).toBe("column");
+    // Top-left: still a leaf.
+    expect(typeof persisted.tree.first.first).toBe("string");
+    // Bottom-left: now a row split (side-by-side = vertical divider).
+    expect(typeof persisted.tree.first.second).toBe("object");
+    const bottomSplit = persisted.tree.first.second as { direction: string };
+    expect(bottomSplit.direction).toBe("row");
+    // Right side: still a leaf.
+    expect(typeof persisted.tree.second).toBe("string");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deep nesting: verify 5+ split levels work without hitting any depth limit.
+// Starting from a 2-tile layout, we repeatedly split the most recently
+// created (auto-focused) editor tile, alternating h/v, reaching 6 levels
+// of nesting and 7 total tiles (2 original + 5 splits).
+// ---------------------------------------------------------------------------
+
+describe("Deep nesting: 5 successive splits from 2-tile start", () => {
+  before(async () => {
+    let count = await getTileCount();
+    while (count > 2) {
+      await clickFirstTile();
+      await browser.pause(100);
+      await sendCxChord("0");
+      await browser.pause(500);
+      count = await getTileCount();
+    }
+  });
+
+  it("starts with exactly 2 tiles", async () => {
+    const count = await getTileCount();
+    expect(count).toBe(2);
+  });
+
+  it("performs 5 successive splits reaching 7 tiles", async () => {
+    await clickFirstTileOfType("editor");
+    await browser.pause(200);
+
+    const keys = ["h", "v", "h", "v", "h"];
+    for (const key of keys) {
+      await sendCxChord(key);
+      await browser.pause(800);
+    }
+
+    const count = await getTileCount();
+    expect(count).toBe(7);
+  });
+
+  it("persisted tree has depth >= 6", async () => {
+    const projectDir = process.env.NOTESAPP_E2E_PROJECT_DIR;
+    expect(projectDir).toBeDefined();
+    const layoutPath = path.join(projectDir!, ".notesapp", "layout.json");
+    const persisted = JSON.parse(fs.readFileSync(layoutPath, "utf-8")) as {
+      tree: unknown;
+    };
+
+    function measureDepth(node: unknown): number {
+      if (typeof node === "string") return 0;
+      if (node && typeof node === "object" && "first" in node && "second" in node) {
+        const n = node as { first: unknown; second: unknown };
+        return 1 + Math.max(measureDepth(n.first), measureDepth(n.second));
+      }
+      return 0;
+    }
+
+    const depth = measureDepth(persisted.tree);
+    expect(depth).toBeGreaterThanOrEqual(6);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Layout persistence across relaunch
 //
 // The persistence guarantee rides on `.notesapp/layout.json`: every structural

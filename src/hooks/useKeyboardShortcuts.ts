@@ -62,17 +62,17 @@ export function useKeyboardShortcuts({
           break;
         }
 
-        // C-x h — split horizontal (row direction = tiles side by side)
+        // C-x h — split horizontal (horizontal divider = tiles stacked top/bottom)
         case e.key === "h" && !e.ctrlKey: {
           e.preventDefault();
-          if (focused) layout.splitTile(focused, "row");
+          if (focused) layout.splitTile(focused, "column");
           break;
         }
 
-        // C-x v — split vertical (column direction = tiles stacked)
+        // C-x v — split vertical (vertical divider = tiles side by side)
         case e.key === "v" && !e.ctrlKey: {
           e.preventDefault();
-          if (focused) layout.splitTile(focused, "column");
+          if (focused) layout.splitTile(focused, "row");
           break;
         }
 
