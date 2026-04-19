@@ -319,7 +319,7 @@ phase 1 work.  Stay tuned.
 Chatted with Claude this morning about tweaking the spec.  Tweaked.  Created a PROMPT.md,
 told Claude to read that, then ... got rate limited again.
 
-### NOTES TO SELF
+## NOTES TO SELF
 Or, perhaps **Notes to Self and Claude, once the current rate limit timer expires**
 
 ```
@@ -370,3 +370,34 @@ I was going to ask the following, but I think it has been overcome by the previo
 In the mean time, I'm going to ask Claude to write PROGRESS.md, shut down this vm and tell it to use more of the 24 cores I have on my server.
 
 > >  Update PROGRESS.md with the current exact state of your work so that I can reboot this machine and restart this session.   
+
+I rebooted and restarted.  Unfortunately, that has not gone well.
+## Claude Code 4/19/26 style
+Well, first of all, neither:
+
+```bash
+claude --continue
+```
+
+nor
+
+```bash
+claude --resume
+```
+
+Resumed the session I had before.  Both reported messages about "no conversation to resume".  So I just tried starting `claude`, forgetting the `--dangerously-skip-permissions` option.  So I exited and restarted with that option.
+
+In all cases, the color scheme was unreadably (for me) off.  I asked Claude (app) about this (pasting a screenshot of what I saw) and the possibility of rolling back to the version of Claude Code I was using before.  I was told:
+
+> Given your screenshot, this really does look like a theme rendering bug rather than a "the new version is broken" bug. Two quick things worth trying in the 30 seconds before you commit to a downgrade:
+>
+> 1. **Switch to the ANSI-only dark theme:** `/theme` → "Dark mode (ANSI colors only)". The red backgrounds you're seeing are true-color RGB escapes; the ANSI theme uses only your terminal's 16-color palette, which should respect your VS Code terminal's black background properly.
+>
+> 2. **Set truecolor on the remote:** before launching Claude, `export COLORTERM=truecolor` (and add it to your `~/.bashrc` or `~/.zshrc` on `ccg1`). The washed-out/garish backgrounds over SSH are a known issue when Claude falls back to a degraded palette.
+
+## Continuing on
+So, I ultimately told Claude Code:
+
+> `> read PROGRESS.md and continue from where we left off`
+
+and ran until I hit the rate limit again.  More to come tomorrow.  I think I'll start by telling Claude to save PROGRESS.md again, exit out, set `COLORTERM`, perhaps remember to launch `claude` with `--dangerously-skip-permissions` and maybe keep going again.
