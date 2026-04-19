@@ -406,3 +406,102 @@ and ran until I hit the rate limit again.  More to come tomorrow.  I think I'll 
 Claude Code finishing munging.  I asked it if it thought it was done with Phase 1 and it stated that there was still an implementation gap as well as some E2E testing gaps.  I asked it to elaborate on the E2E testing gaps, and then crafted the following prompt where I hope I am telling it to tackle the implementation gap first and then set things up so that I can exit and restart Claude Code with a usable color scheme.
 
 > `> Please write the E2E testing gaps and your recommended approaches to addressing them to a file (E2E_GAPS.md, perhaps?) in such a format that I could start a fresh claude code session with a prompt similar to "Read E2E_GAPS.md and then discuss with me the recommended options for addressing them."  Then please address the installation gaps.  Then remind me of the E2E gaps file and a suitable prompt for starting a fresh Claude Code session to address them.`
+
+It crunched away and eventually presented me with:
+
+```
+● All implementation gaps closed. Final test status:
+
+  - Rust: 34 passed
+  - Vitest: 130 passed (+17 new)
+  - E2E: 43 passed
+  - npm run test: EXIT=0
+  - typecheck + clippy: clean
+
+  Implementation gaps addressed:
+  1. Missing-recovery dialog wired in App.tsx:handleCloseTile/handleOpenDifferent → MissingRecoveryDialog
+  2. + New note extension validation test coverage (already implemented)
+  3. LaTeX/Mermaid distinct editor tokens — new mathMermaidHighlight ViewPlugin + theme classes .cm-math-inline,
+  .cm-math-display, .cm-mermaid-block
+  4. Chooser-result reprocessed — setProjectDir now returns boolean; ProjectLoader loops the chooser on a failed
+  §6.1.1 resolution and surfaces the reason
+
+  E2E gaps reminder: /home/wpd/src/notesapp/E2E_GAPS.md documents the five deferred E2E coverage items with
+  recommended approaches (env-resolution per-launch fixtures, restart-with-deleted-file, drag-drop, native chooser
+  mocking, consolidated quit dialog). Suggested fresh-session prompt:
+
+  ▎ Read /home/wpd/src/notesapp/E2E_GAPS.md end to end, then discuss with me the recommended options for addressing
+  ▎ each gap. Once we agree on an approach per gap, implement them in the order recommended in that file. Run npm
+  ▎ run test after each gap is addressed and before declaring it done.
+  ```
+
+  So now, I think I am going to work with Claude.ai to address the UI issues.
+
+  ## Let's Roll Claude Code back to the version I liked better
+  Hmpf... I notice that when I quit this session it showed:
+  ```
+  ❯ quit 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+  
+Resume this session with:
+claude --resume b47f1a00-58a8-4e34-a60c-b5f01f4c9d5c
+```
+
+I wonder if it did that last time.  Anyway, I'm writing this down now and am hopeful that I can resume this session with the rolled back version.
+
+I tried launching Claude Code with:
+```bash
+COLORTERM=truecolor claude --dangerously-skip-permissions
+```
+and still got the weird black background with characters written as black strokes in a white character block.  I don't like this.  Claude.ai is going to help me roll back to something I liked better... I hope...
+
+```bash
+$ claude doctor
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Diagnostics                  
+  ├ Currently running: native (2.1.114)
+  ├ Path: /home/wpd/.local/share/claude/versions/2.1.114
+  ├ Config install method: native
+  └ Search: OK (bundled)
+
+  Updates
+  ├ Auto-updates: enabled
+  ├ Auto-update channel: latest
+  ├ Stable version: 2.1.98
+  └ Latest version: 2.1.114
+                                                       
+  Still having issues? Run /feedback to report details.
+                         
+  Press Enter to continue
+
+$ which claude
+/home/wpd/.local/bin/claude
+```
+
+Claude.ai says I should:
+
+> Inside Claude Code, run:
+> `/config`
+> Change autoUpdatesChannel from latest to stable. It will prompt you — choose to allow the downgrade to 2.1.98. From then on you'll only get stable releases, which skip builds with major regressions and lag "latest" by about a week.
+
+So I'm gonna try that...
+
+Restarted, and now I see that it reports "Claude Code v2.1.98".
+
+Let's try:
+```bash
+claude --resume b47f1a00-58a8-4e34-a60c-b5f01f4c9d5c --dangerously-skip-permissions
+```
+and this prompt:
+```
+> Read E2E_GAPS.md end to end, then discuss with me the recommended options for addressing each gap. Once we agree on an approach per gap, implement them in the order recommended in that file. Run npm run test after each gap is addressed and before declaring it done.
+
+Well... resuming that session resumed the weird colors.  Let's try a fresh session...
+
+That still showed the weird colors.  I am going to try Claude Code's other recommendation, which was to use `/theme` and chose the "Dark mode (ANSI colors only)" option.  So far, that is looking better.  So I'm gonna resume that other session and keep going
+
+... only to hit my rate limit (and, it would seem, I might be getting close to my weekly rate limit).
+
+I'll pick this up again in a couple of hours.
