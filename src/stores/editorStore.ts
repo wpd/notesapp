@@ -15,11 +15,29 @@ interface EditorStoreState {
   autosaveTimers: Record<string, ReturnType<typeof setInterval>>;
   /** Map from file path → 1-indexed line of the caret in the focused editor. */
   cursorLines: Record<string, number>;
+  /**
+   * Map from file path → content at last explicit save (or initial load).
+   * Used to detect undo-to-clean: when current Y.Doc content equals this
+   * value the buffer is back to its saved state (SPEC.md §5.1, §9.1).
+   */
+  savedContents: Record<string, string>;
 
   getOrCreateYDoc: (filePath: string) => Y.Doc;
   releaseYDoc: (filePath: string) => void;
   setDirty: (tileId: string, dirty: boolean) => void;
   isDirty: (tileId: string) => boolean;
+  /**
+   * Record the on-disk content for a file.
+   * Must be called (a) when a file is first loaded into a Y.Doc, and
+   * (b) immediately after a successful explicit save.
+   */
+  setSavedContent: (filePath: string, content: string) => void;
+  /**
+   * Returns true iff `content` is byte-for-byte equal to the last saved
+   * content for `filePath` (i.e. the buffer is in the "clean" state).
+   * Returns false when no saved content has been recorded yet.
+   */
+  isContentClean: (filePath: string, content: string) => boolean;
   saveFile: (tileId: string, filePath: string) => Promise<void>;
   startAutosave: (tileId: string, filePath: string) => void;
   stopAutosave: (tileId: string) => void;
@@ -31,6 +49,7 @@ const useEditorStore = create<EditorStoreState>((set, get) => ({
   dirtyStates: {},
   autosaveTimers: {},
   cursorLines: {},
+  savedContents: {},
 
   getOrCreateYDoc: (filePath: string) => {
     const existing = get().ydocs[filePath];
@@ -65,6 +84,18 @@ const useEditorStore = create<EditorStoreState>((set, get) => ({
     return get().dirtyStates[tileId] ?? false;
   },
 
+  setSavedContent: (filePath: string, content: string) => {
+    set((state) => ({
+      savedContents: { ...state.savedContents, [filePath]: content },
+    }));
+  },
+
+  isContentClean: (filePath: string, content: string) => {
+    const saved = get().savedContents[filePath];
+    if (saved === undefined) return false;
+    return content === saved;
+  },
+
   saveFile: async (tileId: string, filePath: string) => {
     const { ydocs } = get();
     const doc = ydocs[filePath];
@@ -77,8 +108,11 @@ const useEditorStore = create<EditorStoreState>((set, get) => ({
     } catch {
       // Ignore
     }
+    // Update the saved-content baseline so undo-to-clean works correctly
+    // on subsequent edits after this save point.
     set((state) => ({
       dirtyStates: { ...state.dirtyStates, [tileId]: false },
+      savedContents: { ...state.savedContents, [filePath]: text },
     }));
   },
 

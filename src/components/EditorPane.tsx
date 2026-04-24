@@ -40,8 +40,14 @@ export default function EditorPane({
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
 
-  const { getOrCreateYDoc, setDirty, startAutosave, stopAutosave, setCursorLine } =
-    useEditorStore();
+  const {
+    getOrCreateYDoc,
+    setDirty,
+    startAutosave,
+    stopAutosave,
+    setCursorLine,
+    setSavedContent,
+  } = useEditorStore();
   const { focusTile, setTileMissing } = useLayoutStore();
   const wordWrap = useLayoutStore((s) => s.wordWrap[tileId] ?? true);
 
@@ -55,6 +61,10 @@ export default function EditorPane({
       invoke<string>("read_note", { path: filePath })
         .then((content) => {
           if (ytext.length === 0) {
+            // Record the on-disk baseline BEFORE inserting so that the
+            // yCollab-triggered updateListener sees clean content and does
+            // not spuriously set the dirty flag (SPEC.md §5.1, §9.1).
+            setSavedContent(filePath, content);
             ydoc.transact(() => {
               ytext.insert(0, content);
             });
@@ -64,7 +74,7 @@ export default function EditorPane({
           setTileMissing(tileId, filePath);
         });
     }
-  }, [filePath, getOrCreateYDoc, tileId, setTileMissing]);
+  }, [filePath, getOrCreateYDoc, setSavedContent, tileId, setTileMissing]);
 
   // Build / rebuild the CodeMirror view
   useEffect(() => {
@@ -97,8 +107,33 @@ export default function EditorPane({
       mathMermaidHighlight,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          setDirty(tileId, true);
-          updateCounts(update.state.doc.toString());
+          const currentContent = update.state.doc.toString();
+          if (filePath) {
+            const editorStore = useEditorStore.getState();
+            if (editorStore.isContentClean(filePath, currentContent)) {
+              // Undo returned to the saved state (or initial Y.Doc load).
+              // Clear dirty for every tile bound to this file, stop their
+              // autosave timers, and delete the .tmp file (SPEC.md §5.1, §9.1).
+              const boundTiles = Object.values(
+                useLayoutStore.getState().tiles,
+              ).filter((t) => t.filePath === filePath);
+              for (const t of boundTiles) {
+                editorStore.setDirty(t.id, false);
+                editorStore.stopAutosave(t.id);
+              }
+              void invoke("delete_tmp", { path: filePath }).catch(() => {});
+            } else {
+              const wasClean = !editorStore.isDirty(tileId);
+              if (wasClean) {
+                // First dirty edit since last save — arm the autosave timer.
+                startAutosave(tileId, filePath);
+              }
+              setDirty(tileId, true);
+            }
+          } else {
+            setDirty(tileId, true);
+          }
+          updateCounts(currentContent);
         }
         if (filePath && (update.docChanged || update.selectionSet)) {
           const head = update.state.selection.main.head;

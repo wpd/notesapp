@@ -19,6 +19,7 @@ function resetStores() {
     dirtyStates: {},
     autosaveTimers: {},
     cursorLines: {},
+    savedContents: {},
   });
   useLayoutStore.setState({
     tiles: {
@@ -35,6 +36,46 @@ function resetStores() {
     statusMessage: null,
   });
 }
+
+describe("EditorPane — savedContent baseline on load", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    resetStores();
+  });
+
+  it("records savedContent for the file after read_note resolves", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "read_note") return Promise.resolve("# Hello\n\nWorld\n");
+      return Promise.resolve(undefined);
+    });
+
+    render(<EditorPane tileId="tile-2" filePath="/proj/note.md" />);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(
+      useEditorStore.getState().savedContents["/proj/note.md"],
+    ).toBe("# Hello\n\nWorld\n");
+  });
+
+  it("does not record savedContent when filePath is null", () => {
+    render(<EditorPane tileId="tile-3" filePath={null} />);
+    expect(Object.keys(useEditorStore.getState().savedContents)).toHaveLength(0);
+  });
+
+  it("does not record savedContent when read_note rejects", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "read_note") return Promise.reject(new Error("not found"));
+      return Promise.resolve(undefined);
+    });
+
+    render(<EditorPane tileId="tile-1" filePath="/missing/note.md" />);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(
+      useEditorStore.getState().savedContents["/missing/note.md"],
+    ).toBeUndefined();
+  });
+});
 
 describe("EditorPane — missing file transition", () => {
   beforeEach(() => {

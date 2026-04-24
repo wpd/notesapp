@@ -218,6 +218,10 @@ deviations from the spec:
       share the same `Y.Doc` — edits in any tile immediately appear in
       all others
 - [ ] `Y.Doc` serialized to `.tmp` file every 30 seconds
+- [x] **Undo-to-clean:** when an undo returns Y.Doc content to byte-for-byte
+      equality with the `.md` file on disk, cancel the autosave timer for
+      that note, delete its `.tmp` file (if present), and clear the dirty
+      indicator (SPEC.md §5.1, §9.1)
 
 #### Last-Tile Release of a Modified Buffer (SPEC.md §4.0.1)
 - [ ] When a tile's mode changes, buffer changes, tile is closed, or

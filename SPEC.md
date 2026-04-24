@@ -438,7 +438,7 @@ This design keeps the destination of every "Insert into note" operation visible 
 - Find/replace with regex support
 - Live word and character count
 - Scroll-sync with Preview tile (cursor position in editor highlights corresponding position in preview)
-- Dirty indicator (`•`) in the tile title bar when there are unsaved changes
+- Dirty indicator (`•`) in the tile title bar when there are unsaved changes. The dirty state is determined by comparing the current Y.Doc content to the content of the last explicit save (i.e. the `.md` file on disk). If the user undoes all changes back to the saved state, the dirty indicator must be cleared automatically and any in-progress `.tmp` file for that note must be deleted. This mirrors the behavior of Emacs (undo-to-clean clears the modified flag) and VS Code.
 
 **Emacs keybindings (required, not optional):**
 
@@ -835,7 +835,7 @@ The two invariants that must never be violated:
 
 Specific requirements flowing from these:
 
-- **Autosave to `.tmp`:** every 30 seconds of activity, and immediately on window losing focus or the app going to background, the Yjs document is written to `<filename>.tmp` alongside the source `.md` file. The `.md` file is **never touched** by autosave — it is only written by explicit save (`C-x C-s` or `File → Save`). This means the `.md` file always reflects the last deliberate save, and the `.tmp` file holds the most recent unsaved state. `Missing`-mode tiles do not contribute to autosave (§5.5); however, the in-memory Y.Doc of a missing note continues to receive autosave writes if any other non-`Missing` tile is still bound to it.
+- **Autosave to `.tmp`:** every 30 seconds of activity, and immediately on window losing focus or the app going to background, the Yjs document is written to `<filename>.tmp` alongside the source `.md` file. The `.md` file is **never touched** by autosave — it is only written by explicit save (`C-x C-s` or `File → Save`). This means the `.md` file always reflects the last deliberate save, and the `.tmp` file holds the most recent unsaved state. `Missing`-mode tiles do not contribute to autosave (§5.5); however, the in-memory Y.Doc of a missing note continues to receive autosave writes if any other non-`Missing` tile is still bound to it. **Undo-to-clean:** if an undo operation returns the Y.Doc content to byte-for-byte equality with the `.md` file on disk, the autosave timer for that note is cancelled, any existing `.tmp` file is deleted, and the dirty indicator is cleared (see §5.1).
 - **Crash recovery:** on opening a project, if any `.tmp` file exists alongside its `.md` counterpart, the app presents a recovery dialog for each: "Unsaved changes were found for `<filename>`. Would you like to recover them?" Choosing recover opens the `.tmp` content in the editor (without saving); the user then reviews and saves explicitly. Choosing discard deletes the `.tmp` file.
 - **Tile-level error isolation:** each tile is wrapped in a React Error Boundary. If a tile's component throws an unhandled exception (e.g. a Mermaid diagram with invalid syntax causing a renderer crash), only that tile shows an error card ("Something went wrong in this tile — click to reload") and the rest of the application continues normally.
 - **AI errors:** API errors (network failure, rate limit, invalid key, context too long) are shown as an inline error message in the AI Chat tile, not as a dialog or crash. The message includes the error type and a suggested action (e.g. "Rate limited — retry in 30s" with a countdown).
