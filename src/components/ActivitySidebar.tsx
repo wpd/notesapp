@@ -76,7 +76,7 @@ export default function ActivitySidebar(): React.ReactElement {
                 e.dataTransfer.setData("text/notesapp-path", note.path);
                 e.dataTransfer.setData("text/plain", note.path);
               }}
-              title={`${note.name}.md — drag to open in a pane`}
+              title={`${note.name}.md — drag to open in a tile`}
               style={{
                 padding: "5px 12px",
                 fontFamily: "var(--font-prose)",

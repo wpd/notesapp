@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface NoteEntry {
   path: string;
   name: string;
+  extension?: string;
   modified_at: number;
 }
 
@@ -17,7 +18,7 @@ interface ProjectState {
   isLoaded: boolean;
   error: string | null;
 
-  setProjectDir: (dir: string) => Promise<void>;
+  setProjectDir: (dir: string) => Promise<boolean>;
   refreshNotes: () => Promise<void>;
   reset: () => void;
 }
@@ -28,12 +29,14 @@ const useProjectStore = create<ProjectState>((set, get) => ({
   isLoaded: false,
   error: null,
 
-  setProjectDir: async (dir: string) => {
+  setProjectDir: async (dir: string): Promise<boolean> => {
     try {
       const notes = await invoke<NoteEntry[]>("open_project", { path: dir });
       set({ projectDir: dir, notes, isLoaded: true, error: null });
+      return true;
     } catch (err) {
-      set({ error: String(err), isLoaded: false });
+      set({ projectDir: null, notes: [], isLoaded: false, error: String(err) });
+      return false;
     }
   },
 

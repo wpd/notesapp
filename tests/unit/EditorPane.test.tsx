@@ -4,9 +4,10 @@
 
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import EditorPane from "../../src/components/EditorPane";
 import useEditorStore from "../../src/stores/editorStore";
+import useLayoutStore from "../../src/stores/layoutStore";
 
 const invokeMock = (
   window as unknown as { __TAURI_INTERNALS__: { invoke: ReturnType<typeof vi.fn> } }
@@ -19,15 +20,29 @@ function resetStores() {
     autosaveTimers: {},
     cursorLines: {},
   });
+  useLayoutStore.setState({
+    tiles: {
+      "tile-1": { id: "tile-1", mode: "editor", filePath: "/missing/note.md" },
+      "tile-2": { id: "tile-2", mode: "editor", filePath: "/proj/note.md" },
+      "tile-3": { id: "tile-3", mode: "editor", filePath: null },
+    },
+    mosaicTree: "tile-1",
+    focusedTileId: "tile-1",
+    pinnedTileId: null,
+    maximizedTileId: null,
+    savedTreeBeforeMaximize: null,
+    tileCounter: 3,
+    statusMessage: null,
+  });
 }
 
-describe("EditorPane — file not found card", () => {
+describe("EditorPane — missing file transition", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     resetStores();
   });
 
-  it("shows the ⚠ File not found card when read_note rejects", async () => {
+  it("transitions tile to Missing mode when read_note rejects", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "read_note") {
         return Promise.reject(new Error("File not found"));
@@ -37,15 +52,14 @@ describe("EditorPane — file not found card", () => {
 
     render(<EditorPane tileId="tile-1" filePath="/missing/note.md" />);
 
-    const card = await waitFor(() =>
-      screen.getByTestId("file-not-found-tile-1"),
-    );
-    expect(card).toBeInTheDocument();
-    expect(card.textContent).toMatch(/File not found on disk/);
-    expect(card.textContent).toContain("/missing/note.md");
+    await waitFor(() => {
+      const tile = useLayoutStore.getState().tiles["tile-1"];
+      expect(tile.mode).toBe("missing");
+      expect(tile.missingPath).toBe("/missing/note.md");
+    });
   });
 
-  it("does not show the card when read_note succeeds", async () => {
+  it("does not transition the tile when read_note succeeds", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "read_note") return Promise.resolve("# Title\n");
       return Promise.resolve(undefined);
@@ -54,11 +68,15 @@ describe("EditorPane — file not found card", () => {
     render(<EditorPane tileId="tile-2" filePath="/proj/note.md" />);
     // Let the microtask that resolves `read_note` run.
     await new Promise((r) => setTimeout(r, 0));
-    expect(screen.queryByTestId("file-not-found-tile-2")).toBeNull();
+    const tile = useLayoutStore.getState().tiles["tile-2"];
+    expect(tile.mode).toBe("editor");
+    expect(tile.missingPath).toBeUndefined();
   });
 
-  it("does not show the card when filePath is null", () => {
+  it("does not call read_note when filePath is null", () => {
     render(<EditorPane tileId="tile-3" filePath={null} />);
-    expect(screen.queryByTestId("file-not-found-tile-3")).toBeNull();
+    expect(
+      invokeMock.mock.calls.some((call) => call[0] === "read_note"),
+    ).toBe(false);
   });
 });

@@ -50,24 +50,71 @@ if (!existsSync(appBinary)) {
   process.exit(0);
 }
 
-// 3. All deps present — run wdio under xvfb-run.
-console.log("✓  WebKitWebDriver found — running E2E tests under xvfb-run");
+// 3. Check for dbus-run-session — WebKitGTK requires a session bus to start its
+//    web/network/GPU subprocesses. Without it, the webview hangs before firing
+//    any PageLoadEvent and our wdio onPrepare hook times out waiting for the
+//    NOTESAPP_PAGE_LOADED stdout marker.
+function findDbusRunSession() {
+  const result = spawnSync("which", ["dbus-run-session"], { encoding: "utf8" });
+  return result.status === 0 && result.stdout.trim().length > 0;
+}
+const haveDbusRunSession = findDbusRunSession();
+if (!haveDbusRunSession) {
+  console.warn("");
+  console.warn("⚠️  dbus-run-session not found — WebKitGTK may hang on this host.");
+  console.warn("   Install with: sudo apt install -y dbus-x11");
+  console.warn("   Continuing anyway, but expect ECONNREFUSED on :4444.");
+  console.warn("");
+}
 
-const result = spawnSync(
-  "xvfb-run",
-  [
-    "--auto-servernum",
-    "--server-args=-screen 0 1280x800x24",
-    "npx",
-    "wdio",
-    "run",
-    "wdio.conf.ts",
-  ],
-  {
-    cwd: projectRoot,
-    stdio: "inherit",
-    encoding: "utf8",
-  },
+// 4. All deps present — run wdio under (optionally) dbus-run-session + xvfb-run.
+console.log(
+  haveDbusRunSession
+    ? "✓  Running E2E tests under dbus-run-session + xvfb-run"
+    : "✓  Running E2E tests under xvfb-run (no dbus-run-session)",
 );
 
-process.exit(result.status ?? 1);
+const xvfbCmd = [
+  "xvfb-run",
+  "--auto-servernum",
+  "--server-args=-screen 0 1280x800x24",
+  "npx",
+  "wdio",
+  "run",
+  "wdio.conf.ts",
+];
+
+const [cmd, ...args] = haveDbusRunSession
+  ? ["dbus-run-session", "--", ...xvfbCmd]
+  : xvfbCmd;
+
+const result = spawnSync(cmd, args, {
+  cwd: projectRoot,
+  stdio: "inherit",
+  encoding: "utf8",
+});
+
+if (result.status !== 0) {
+  process.exit(result.status ?? 1);
+}
+
+// Run multi-launch E2E tests (env-resolution cases A–I, restart-delete relay).
+console.log("\n✓  Main E2E suite passed. Running multi-launch tests…\n");
+
+const multiLaunchCmd = haveDbusRunSession
+  ? ["dbus-run-session", "--", "xvfb-run", "--auto-servernum",
+     "--server-args=-screen 0 1280x800x24", "node",
+     join(projectRoot, "scripts", "run-multi-launch-e2e.js")]
+  : ["xvfb-run", "--auto-servernum",
+     "--server-args=-screen 0 1280x800x24", "node",
+     join(projectRoot, "scripts", "run-multi-launch-e2e.js")];
+
+const [multiCmd, ...multiArgs] = multiLaunchCmd;
+const multiResult = spawnSync(multiCmd, multiArgs, {
+  cwd: projectRoot,
+  stdio: "inherit",
+  encoding: "utf8",
+  timeout: 600000,
+});
+
+process.exit(multiResult.status ?? 1);

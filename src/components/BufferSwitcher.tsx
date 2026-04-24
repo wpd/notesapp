@@ -2,128 +2,258 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import useProjectStore, { NoteEntry } from "../stores/projectStore";
-import useLayoutStore from "../stores/layoutStore";
+import useLayoutStore, { TileMode } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 import { invoke } from "@tauri-apps/api/core";
 
+export type PickerMode =
+  | "editor" // Editor buffer picker: all text files + New note
+  | "preview" // Preview buffer picker: .md only + New note
+  | "find-file" // C-x C-f: same as editor picker but with Create option
+  | "reference-stub" // Phase 1 stub for Reference mode
+  | "aichat-stub"; // Phase 1 stub for AI Chat mode
+
 interface BufferSwitcherProps {
   onClose: () => void;
-  /**
-   * "buffer" (C-x b): switch to an existing note only.
-   * "find-file" (C-x C-f): same list, but if the query has no exact match
-   * and the project has a directory, offer a "Create: <query>" row that
-   * creates a new note via the create_note command.
-   */
-  mode?: "buffer" | "find-file";
+  pickerMode?: PickerMode;
+  /** When set, the switcher binds to this tile and mode-switches on select */
+  targetTileId?: string;
+  targetMode?: TileMode;
+  /** Called after a successful selection */
+  onSelect?: (filePath: string) => void;
 }
 
 export default function BufferSwitcher({
   onClose,
-  mode = "buffer",
+  pickerMode = "editor",
+  targetTileId,
+  targetMode,
+  onSelect,
 }: BufferSwitcherProps): React.ReactElement {
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [allNotes, setAllNotes] = useState<NoteEntry[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { notes, refreshNotes } = useProjectStore();
-  const { focusedTileId, tiles, setTileFile, persistLayout } = useLayoutStore();
+  const { focusedTileId, requestSetTileFile, persistLayout } =
+    useLayoutStore();
   const { getOrCreateYDoc } = useEditorStore();
   const projectDir = useProjectStore((s) => s.projectDir);
 
+  const effectiveTileId = targetTileId ?? focusedTileId;
+
+  // Phase 1 stubs for Reference and AI Chat
+  if (pickerMode === "reference-stub" || pickerMode === "aichat-stub") {
+    const label =
+      pickerMode === "reference-stub" ? "Reference" : "AI Chat";
+    return (
+      <div
+        data-testid="buffer-switcher-overlay"
+        onClick={onClose}
+        style={overlayStyle}
+      >
+        <div
+          data-testid="buffer-switcher-stub"
+          onClick={(e) => e.stopPropagation()}
+          style={dialogStyle}
+        >
+          <div style={{ padding: "2rem", textAlign: "center" }}>
+            <p
+              style={{
+                fontSize: "15px",
+                color: "var(--color-text-primary)",
+                fontFamily: "var(--font-prose)",
+                marginBottom: "1rem",
+              }}
+            >
+              {label} mode is not yet available.
+            </p>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+                fontFamily: "var(--font-prose)",
+              }}
+            >
+              This feature will be implemented in a future phase.
+            </p>
+            <button
+              onClick={onClose}
+              style={{
+                marginTop: "1rem",
+                padding: "6px 16px",
+                background: "var(--color-accent)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontFamily: "var(--font-prose)",
+                fontSize: "13px",
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Load notes list — for editor/find-file, load all text files; for preview, .md only
+  useEffect(() => {
+    if (!projectDir) return;
+    const cmd =
+      pickerMode === "preview" ? "list_notes" : "list_notes_all";
+    invoke<NoteEntry[]>(cmd, { path: projectDir })
+      .then(setAllNotes)
+      .catch(() => setAllNotes(notes));
+  }, [projectDir, pickerMode, notes]);
+
   // Filter notes by query
   const filtered: NoteEntry[] = query.trim()
-    ? notes.filter((n) =>
+    ? allNotes.filter((n) =>
         n.name.toLowerCase().includes(query.toLowerCase()),
       )
-    : notes;
+    : allNotes;
 
-  // find-file: offer to create a new note when the query has no exact match.
+  // Determine if we can offer a "Create new note" option
   const trimmedQuery = query.trim();
   const hasExactMatch =
     trimmedQuery.length > 0 &&
-    notes.some(
+    allNotes.some(
       (n) => n.name.toLowerCase() === trimmedQuery.toLowerCase(),
     );
   const showCreateOption =
-    mode === "find-file" &&
-    trimmedQuery.length > 0 &&
-    !hasExactMatch &&
-    !!projectDir;
-  // Total rows (filtered notes + optional "Create" sentinel at end)
-  const rowCount = filtered.length + (showCreateOption ? 1 : 0);
+    trimmedQuery.length > 0 && !hasExactMatch && !!projectDir;
+  // Always show "+ New note…" as the first item when query is empty
+  const showNewNoteTop = trimmedQuery.length === 0 && !!projectDir;
+  const rowCount =
+    filtered.length +
+    (showCreateOption ? 1 : 0) +
+    (showNewNoteTop ? 1 : 0);
 
-  // Keep selection in bounds
   useEffect(() => {
     setSelectedIdx(0);
+    setValidationError(null);
   }, [query]);
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const openSelected = async (note: NoteEntry) => {
-    if (!focusedTileId) {
-      onClose();
-      return;
-    }
-    const tile = tiles[focusedTileId];
-    if (!tile || tile.type !== "editor") {
-      onClose();
-      return;
-    }
-
-    // Load file into Y.Doc if not already loaded
-    const ydoc = getOrCreateYDoc(note.path);
-    const ytext = ydoc.getText("content");
-    if (ytext.length === 0) {
-      try {
-        const content = await invoke<string>("read_note", { path: note.path });
-        ydoc.transact(() => {
-          if (ytext.length === 0) {
-            ytext.insert(0, content);
-          }
-        });
-      } catch {
-        // New or unreadable file — open blank
+  const openSelected = useCallback(
+    async (note: NoteEntry) => {
+      if (!effectiveTileId) {
+        onClose();
+        return;
       }
-    }
 
-    setTileFile(focusedTileId, note.path);
-    if (projectDir) {
-      await persistLayout(projectDir);
-    }
-    onClose();
-  };
+      // Load file into Y.Doc if not already loaded
+      const ydoc = getOrCreateYDoc(note.path);
+      const ytext = ydoc.getText("content");
+      if (ytext.length === 0) {
+        try {
+          const content = await invoke<string>("read_note", {
+            path: note.path,
+          });
+          ydoc.transact(() => {
+            if (ytext.length === 0) {
+              ytext.insert(0, content);
+            }
+          });
+        } catch {
+          // New or unreadable file — open blank
+        }
+      }
 
-  const createAndOpen = async (name: string): Promise<void> => {
-    if (!projectDir || !focusedTileId) {
+      // SPEC.md §4.0.1 — prompt Save/Discard/Cancel if this would release
+      // the last tile of a modified buffer.
+      const applied = requestSetTileFile(
+        effectiveTileId,
+        note.path,
+        targetMode,
+      );
+      if (!applied) {
+        // The store opened a dialog; dismiss this picker. The user's
+        // eventual Save/Discard choice will complete the binding.
+        onClose();
+        return;
+      }
+      if (projectDir) {
+        await persistLayout(projectDir);
+      }
+      onSelect?.(note.path);
       onClose();
-      return;
-    }
-    const tile = tiles[focusedTileId];
-    if (!tile || tile.type !== "editor") {
-      onClose();
-      return;
-    }
-    try {
-      const newPath = await invoke<string>("create_note", {
-        projectDir,
-        name,
-      });
-      await refreshNotes();
-      // Prime the Y.Doc with empty content, then point the tile at the new file.
-      const ydoc = getOrCreateYDoc(newPath);
-      ydoc.getText("content"); // no insert — file is empty on disk
-      setTileFile(focusedTileId, newPath);
-      await persistLayout(projectDir);
-    } catch {
-      // Swallow — dialog will just close.  A future ticket can surface an error toast.
-    } finally {
-      onClose();
-    }
-  };
+    },
+    [
+      effectiveTileId,
+      targetMode,
+      requestSetTileFile,
+      persistLayout,
+      projectDir,
+      getOrCreateYDoc,
+      onSelect,
+      onClose,
+    ],
+  );
+
+  const createAndOpen = useCallback(
+    async (name: string): Promise<void> => {
+      if (!projectDir || !effectiveTileId) {
+        onClose();
+        return;
+      }
+
+      // Preview picker validation: reject non-.md extensions
+      if (pickerMode === "preview" && name.includes(".") && !name.endsWith(".md")) {
+        setValidationError(
+          "Preview mode requires a markdown file; please use a .md extension or create this file from an Editor tile instead.",
+        );
+        return;
+      }
+
+      try {
+        const newPath = await invoke<string>("create_note", {
+          projectDir,
+          name,
+        });
+        await refreshNotes();
+        const ydoc = getOrCreateYDoc(newPath);
+        ydoc.getText("content");
+        const applied = requestSetTileFile(
+          effectiveTileId,
+          newPath,
+          targetMode,
+        );
+        if (!applied) {
+          // Dialog opened — let user resolve the old buffer's fate first.
+          onClose();
+          return;
+        }
+        await persistLayout(projectDir);
+        onSelect?.(newPath);
+      } catch {
+        // Swallow
+      } finally {
+        onClose();
+      }
+    },
+    [
+      projectDir,
+      effectiveTileId,
+      pickerMode,
+      targetMode,
+      requestSetTileFile,
+      persistLayout,
+      refreshNotes,
+      getOrCreateYDoc,
+      onSelect,
+      onClose,
+    ],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -136,43 +266,31 @@ export default function BufferSwitcher({
       setSelectedIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (selectedIdx < filtered.length) {
-        openSelected(filtered[selectedIdx]);
+      const offset = showNewNoteTop ? 1 : 0;
+      if (showNewNoteTop && selectedIdx === 0) {
+        // Prompt for filename is handled by createAndOpen
+        void createAndOpen(trimmedQuery || "untitled");
+      } else if (selectedIdx - offset < filtered.length) {
+        void openSelected(filtered[selectedIdx - offset]);
       } else if (showCreateOption) {
         void createAndOpen(trimmedQuery);
       }
     }
   };
 
+  const placeholderText =
+    pickerMode === "preview" ? "Open markdown note…" : "Open note…";
+
   return (
     <div
       data-testid="buffer-switcher-overlay"
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        paddingTop: "15vh",
-      }}
+      style={overlayStyle}
     >
       <div
         data-testid="buffer-switcher"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--color-bg-overlay)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "8px",
-          width: "500px",
-          maxHeight: "60vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-        }}
+        style={dialogStyle}
       >
         {/* Search input */}
         <div
@@ -190,13 +308,13 @@ export default function BufferSwitcher({
               fontSize: "14px",
             }}
           >
-            🔍
+            {pickerMode === "preview" ? "\uD83D\uDC41" : "\uD83D\uDD0D"}
           </span>
           <input
             ref={inputRef}
             data-testid="buffer-switcher-input"
             type="text"
-            placeholder="Open note…"
+            placeholder={placeholderText}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -224,6 +342,23 @@ export default function BufferSwitcher({
           </kbd>
         </div>
 
+        {/* Validation error */}
+        {validationError && (
+          <div
+            data-testid="buffer-switcher-validation-error"
+            style={{
+              padding: "8px 14px",
+              background: "rgba(220,38,38,0.08)",
+              color: "var(--color-error)",
+              fontSize: "12px",
+              fontFamily: "var(--font-prose)",
+              borderBottom: "1px solid var(--color-border)",
+            }}
+          >
+            {validationError}
+          </div>
+        )}
+
         {/* Note list */}
         <div
           data-testid="buffer-switcher-list"
@@ -232,7 +367,7 @@ export default function BufferSwitcher({
             flex: 1,
           }}
         >
-          {filtered.length === 0 && !showCreateOption ? (
+          {filtered.length === 0 && !showCreateOption && !showNewNoteTop ? (
             <div
               style={{
                 padding: "12px",
@@ -243,64 +378,71 @@ export default function BufferSwitcher({
                 textAlign: "center",
               }}
             >
-              {notes.length === 0
+              {allNotes.length === 0
                 ? "No notes in project"
                 : "No matching notes"}
             </div>
           ) : (
             <>
-              {filtered.map((note, idx) => (
+              {/* "+ New note…" at top when no query */}
+              {showNewNoteTop && (
                 <div
-                  key={note.path}
-                  data-testid={`buffer-item-${note.name}`}
-                  onClick={() => openSelected(note)}
-                  style={{
-                    padding: "7px 14px",
-                    fontFamily: "var(--font-prose)",
-                    fontSize: "13px",
-                    color:
-                      idx === selectedIdx
-                        ? "var(--color-text-primary)"
-                        : "var(--color-text-secondary)",
-                    background:
-                      idx === selectedIdx
-                        ? "var(--color-accent-muted)"
-                        : "transparent",
-                    cursor: "pointer",
-                    borderLeft:
-                      idx === selectedIdx
-                        ? "3px solid var(--color-accent)"
-                        : "3px solid transparent",
-                  }}
-                  onMouseEnter={() => setSelectedIdx(idx)}
+                  data-testid="buffer-new-note-top"
+                  onClick={() => void createAndOpen("untitled")}
+                  style={itemStyle(selectedIdx === 0)}
+                  onMouseEnter={() => setSelectedIdx(0)}
                 >
-                  {note.name}
+                  + New note…
                 </div>
-              ))}
+              )}
+
+              {filtered.map((note, idx) => {
+                const adjustedIdx = idx + (showNewNoteTop ? 1 : 0);
+                return (
+                  <div
+                    key={note.path}
+                    data-testid={`buffer-item-${note.name}`}
+                    onClick={() => void openSelected(note)}
+                    style={itemStyle(adjustedIdx === selectedIdx)}
+                    onMouseEnter={() => setSelectedIdx(adjustedIdx)}
+                  >
+                    <span>{note.name}</span>
+                    {note.extension && note.extension !== "md" && (
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          color: "var(--color-text-disabled)",
+                          marginLeft: "6px",
+                        }}
+                      >
+                        .{note.extension}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+
               {showCreateOption && (
                 <div
                   data-testid="buffer-create-new"
                   onClick={() => void createAndOpen(trimmedQuery)}
                   style={{
-                    padding: "7px 14px",
-                    fontFamily: "var(--font-prose)",
-                    fontSize: "13px",
+                    ...itemStyle(
+                      selectedIdx ===
+                        filtered.length + (showNewNoteTop ? 1 : 0),
+                    ),
+                    borderTop: "1px solid var(--color-border)",
                     color:
-                      selectedIdx === filtered.length
+                      selectedIdx ===
+                      filtered.length + (showNewNoteTop ? 1 : 0)
                         ? "var(--color-text-primary)"
                         : "var(--color-accent)",
-                    background:
-                      selectedIdx === filtered.length
-                        ? "var(--color-accent-muted)"
-                        : "transparent",
-                    cursor: "pointer",
-                    borderLeft:
-                      selectedIdx === filtered.length
-                        ? "3px solid var(--color-accent)"
-                        : "3px solid transparent",
-                    borderTop: "1px solid var(--color-border)",
                   }}
-                  onMouseEnter={() => setSelectedIdx(filtered.length)}
+                  onMouseEnter={() =>
+                    setSelectedIdx(
+                      filtered.length + (showNewNoteTop ? 1 : 0),
+                    )
+                  }
                 >
                   + Create new note: <strong>{trimmedQuery}</strong>
                 </div>
@@ -311,4 +453,45 @@ export default function BufferSwitcher({
       </div>
     </div>
   );
+}
+
+const overlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.4)",
+  zIndex: 1000,
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  paddingTop: "15vh",
+};
+
+const dialogStyle: React.CSSProperties = {
+  background: "var(--color-bg-overlay)",
+  border: "1px solid var(--color-border)",
+  borderRadius: "8px",
+  width: "500px",
+  maxHeight: "60vh",
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+};
+
+function itemStyle(selected: boolean): React.CSSProperties {
+  return {
+    padding: "7px 14px",
+    fontFamily: "var(--font-prose)",
+    fontSize: "13px",
+    color: selected
+      ? "var(--color-text-primary)"
+      : "var(--color-text-secondary)",
+    background: selected ? "var(--color-accent-muted)" : "transparent",
+    cursor: "pointer",
+    borderLeft: selected
+      ? "3px solid var(--color-accent)"
+      : "3px solid transparent",
+    display: "flex",
+    alignItems: "center",
+  };
 }

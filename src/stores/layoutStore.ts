@@ -11,19 +11,69 @@ import {
   getLeaves,
 } from "react-mosaic-component";
 import useProjectStore from "./projectStore";
+import useEditorStore from "./editorStore";
 
-export type TileType = "editor" | "preview";
+export type TileMode = "editor" | "preview" | "reference" | "aichat" | "missing";
 
 export interface TileState {
   id: string;
-  type: TileType;
+  mode: TileMode;
   filePath: string | null;
+  /** For Missing tiles: the original file path that could not be resolved */
+  missingPath?: string;
 }
+
+/**
+ * SPEC.md §4.0.1 — last-tile release dialog.
+ * A request to release a buffer that has unsaved changes must be confirmed
+ * via Save / Discard / Cancel before the underlying mutation happens.
+ */
+export type PendingDialog =
+  | { kind: "close"; tileId: string; filePath: string }
+  | {
+      kind: "buffer";
+      tileId: string;
+      newFilePath: string;
+      newMode?: TileMode;
+      oldFilePath: string;
+    }
+  | {
+      kind: "quit";
+      dirtyBuffers: Array<{ filePath: string; representativeTileId: string }>;
+      onComplete?: () => void;
+    }
+  | {
+      // SPEC.md §5.5 — Continue/Cancel confirmation for a Missing tile with
+      // unsaved in-memory edits. Save is not offered because the underlying
+      // file is gone.
+      kind: "missing-recovery";
+      tileId: string;
+      missingPath: string;
+      action: "close" | "open-different";
+      onContinue: () => void;
+    };
 
 /** Serialized layout persisted to layout.json */
 interface PersistedLayout {
   tree: MosaicNode<string> | null;
-  tiles: Record<string, { type: TileType; filePath: string | null }>;
+  tiles: Record<
+    string,
+    { mode: TileMode; filePath: string | null; missingPath?: string }
+  >;
+}
+
+/** Legacy layout format for backward compatibility */
+interface LegacyPersistedLayout {
+  tree: MosaicNode<string> | null;
+  tiles: Record<
+    string,
+    {
+      type?: string;
+      mode?: string;
+      filePath: string | null;
+      missingPath?: string;
+    }
+  >;
 }
 
 interface LayoutStoreState {
@@ -32,43 +82,70 @@ interface LayoutStoreState {
   focusedTileId: string | null;
   pinnedTileId: string | null;
   sidebarVisible: boolean;
-  /** ID of maximized tile; if set, only that tile is shown */
   maximizedTileId: string | null;
-  /** Saved tree before maximization, for restore */
   savedTreeBeforeMaximize: MosaicNode<string> | null;
   tileCounter: number;
+  /** Status bar message, auto-cleared after a timeout */
+  statusMessage: string | null;
+  /** SPEC.md §4.0.1 pending release dialog state */
+  pendingDialog: PendingDialog | null;
+  /** Per-tile word-wrap preference for editor tiles. Defaults to true. */
+  wordWrap: Record<string, boolean>;
 
   // Getters
   getTileIds: () => string[];
   getOrderedTileIds: () => string[];
 
   // Actions
-  initDefaultLayout: () => void;
+  initDefaultLayout: (firstNotePath?: string) => void;
   setMosaicTree: (tree: MosaicNode<string> | null) => void;
   splitTile: (tileId: string, direction: "row" | "column") => void;
   closeTile: (tileId: string) => void;
+  /** Guarded close: prompts Save/Discard/Cancel if tile is last-of-dirty-buffer */
+  requestCloseTile: (tileId: string) => void;
   focusTile: (tileId: string) => void;
   focusNextTile: () => void;
+  focusPrevTile: () => void;
   togglePin: (tileId: string) => void;
   toggleSidebar: () => void;
   toggleMaximize: (tileId: string) => void;
   setTileFile: (tileId: string, filePath: string) => void;
-  createTile: (type: TileType, filePath?: string | null) => string;
+  /** Guarded file switch: prompts Save/Discard/Cancel if releasing last-of-dirty-buffer */
+  requestSetTileFile: (
+    tileId: string,
+    newFilePath: string,
+    newMode?: TileMode,
+  ) => boolean;
+  setTileMode: (tileId: string, mode: TileMode) => void;
+  setTileMissing: (tileId: string, missingPath: string) => void;
+  createTile: (mode: TileMode, filePath?: string | null) => string;
   persistLayout: (projectDir: string) => Promise<void>;
   loadLayout: (projectDir: string) => Promise<boolean>;
+  setStatusMessage: (msg: string | null) => void;
+  toggleWordWrap: (tileId: string) => void;
+
+  /** Count how many tiles are bound to a given filePath */
+  countTilesForFile: (filePath: string) => number;
+  /** Check if a tile is the last one bound to a given file */
+  isLastTileForFile: (tileId: string) => boolean;
+
+  // Dialog control
+  setPendingDialog: (dialog: PendingDialog | null) => void;
+  /** Collect all currently-dirty buffers for the consolidated-quit dialog */
+  collectDirtyBuffers: (
+    dirtyTiles: Record<string, boolean>,
+  ) => Array<{ filePath: string; representativeTileId: string }>;
 }
 
 // ---------------------------------------------------------------------------
 // Tree traversal helpers
 // ---------------------------------------------------------------------------
 
-/** Walk the tree and collect leaf IDs in left-to-right, top-to-bottom order. */
 function collectLeaves(tree: MosaicNode<string>): string[] {
   if (typeof tree === "string") return [tree];
   return [...collectLeaves(tree.first), ...collectLeaves(tree.second)];
 }
 
-/** Find the path (array of MosaicBranch) to a given leaf ID. Returns null if not found. */
 function getPathToLeaf(
   tree: MosaicNode<string>,
   targetId: string,
@@ -88,14 +165,11 @@ function getPathToLeaf(
 // ---------------------------------------------------------------------------
 
 let _tileCounter = 0;
-function nextTileId(type: TileType): string {
+function nextTileId(mode: TileMode): string {
   _tileCounter += 1;
-  return `${type}-${_tileCounter}`;
+  return `${mode}-${_tileCounter}`;
 }
 
-// Debounced auto-persist: structural mutations schedule a write to layout.json.
-// Fire-and-forget — the Tauri IPC call inside `persistLayout` already swallows
-// errors so the UI is never blocked.
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 function schedulePersist(): void {
   const dir = useProjectStore.getState().projectDir;
@@ -107,6 +181,8 @@ function schedulePersist(): void {
   }, 250);
 }
 
+let _statusTimer: ReturnType<typeof setTimeout> | null = null;
+
 const useLayoutStore = create<LayoutStoreState>((set, get) => ({
   mosaicTree: null,
   tiles: {},
@@ -116,6 +192,9 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
   maximizedTileId: null,
   savedTreeBeforeMaximize: null,
   tileCounter: 0,
+  statusMessage: null,
+  pendingDialog: null,
+  wordWrap: {},
 
   getTileIds: () => {
     const { mosaicTree } = get();
@@ -129,7 +208,7 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     return collectLeaves(mosaicTree);
   },
 
-  initDefaultLayout: () => {
+  initDefaultLayout: (firstNotePath?: string) => {
     const editorId = nextTileId("editor");
     const previewId = nextTileId("preview");
     const defaultTree: MosaicNode<string> = {
@@ -141,8 +220,16 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     set({
       mosaicTree: defaultTree,
       tiles: {
-        [editorId]: { id: editorId, type: "editor", filePath: null },
-        [previewId]: { id: previewId, type: "preview", filePath: null },
+        [editorId]: {
+          id: editorId,
+          mode: "editor",
+          filePath: firstNotePath ?? null,
+        },
+        [previewId]: {
+          id: previewId,
+          mode: "preview",
+          filePath: firstNotePath ?? null,
+        },
       },
       focusedTileId: editorId,
     });
@@ -150,7 +237,6 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
   setMosaicTree: (tree) => {
     set({ mosaicTree: tree });
-    // If a tile was removed from the tree, clean up tiles map
     if (tree) {
       const liveIds = new Set(getLeaves(tree));
       set((state) => {
@@ -181,10 +267,10 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     const path = getPathToLeaf(mosaicTree, tileId);
     if (path === null) return;
 
-    const focusedType = tiles[tileId]?.type ?? "editor";
-    const newId = nextTileId(focusedType);
+    const parentTile = tiles[tileId];
+    const focusedMode = parentTile?.mode ?? "editor";
+    const newId = nextTileId(focusedMode);
 
-    // Build the split subtree
     const splitNode: MosaicNode<string> = {
       direction,
       first: tileId,
@@ -192,7 +278,6 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
       splitPercentage: 50,
     };
 
-    // Replace the leaf with the split node
     const newTree = updateTree(mosaicTree, [
       {
         path,
@@ -202,14 +287,15 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
     const newTile: TileState = {
       id: newId,
-      type: focusedType,
-      filePath: tiles[tileId]?.filePath ?? null,
+      mode: focusedMode,
+      filePath: parentTile?.filePath ?? null,
+      missingPath: parentTile?.missingPath,
     };
 
     set((state) => ({
       mosaicTree: newTree,
       tiles: { ...state.tiles, [newId]: newTile },
-      focusedTileId: newId,
+      focusedTileId: tileId, // original tile keeps focus per SPEC
     }));
     schedulePersist();
   },
@@ -218,21 +304,17 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     const { mosaicTree, tiles } = get();
     if (!mosaicTree) return;
     if (typeof mosaicTree === "string") {
-      // Last tile — don't close
       return;
     }
 
     const path = getPathToLeaf(mosaicTree, tileId);
     if (path === null) return;
 
-    // Can't close the last tile
     const leaves = getLeaves(mosaicTree);
     if (leaves.length <= 1) return;
 
-    // Navigate to parent and replace the parent with the sibling
     if (path.length === 0) return;
 
-    // Use updateTree to remove the node
     const newTree = updateTree(mosaicTree, [
       {
         path: path.slice(0, -1),
@@ -245,8 +327,7 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     const newTiles = { ...tiles };
     delete newTiles[tileId];
 
-    const newFocused =
-      leaves.find((id) => id !== tileId) ?? null;
+    const newFocused = leaves.find((id) => id !== tileId) ?? null;
 
     set({
       mosaicTree: newTree,
@@ -255,6 +336,34 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
       pinnedTileId: get().pinnedTileId === tileId ? null : get().pinnedTileId,
     });
     schedulePersist();
+  },
+
+  /**
+   * Guarded close — SPEC.md §4.0.1.
+   * If this tile is the last one bound to a modified buffer, open the
+   * Save / Discard / Cancel dialog instead of immediately closing.
+   */
+  requestCloseTile: (tileId) => {
+    const { tiles, isLastTileForFile } = get();
+    const tile = tiles[tileId];
+    if (!tile) return;
+    const isDirty = useEditorStore.getState().isDirty(tileId);
+    if (
+      tile.filePath &&
+      tile.mode !== "missing" &&
+      isDirty &&
+      isLastTileForFile(tileId)
+    ) {
+      set({
+        pendingDialog: {
+          kind: "close",
+          tileId,
+          filePath: tile.filePath,
+        },
+      });
+      return;
+    }
+    get().closeTile(tileId);
   },
 
   focusTile: (tileId) => {
@@ -271,16 +380,25 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     set({ focusedTileId: next });
   },
 
+  focusPrevTile: () => {
+    const { mosaicTree, focusedTileId } = get();
+    if (!mosaicTree) return;
+    const ids = collectLeaves(mosaicTree);
+    if (ids.length === 0) return;
+    const idx = focusedTileId ? ids.indexOf(focusedTileId) : -1;
+    const prev = ids[(idx - 1 + ids.length) % ids.length];
+    set({ focusedTileId: prev });
+  },
+
   togglePin: (tileId) => {
     const { tiles, pinnedTileId } = get();
     const tile = tiles[tileId];
-    if (!tile || tile.type !== "editor") return;
+    if (!tile || tile.mode !== "editor") return;
     if (pinnedTileId === tileId) {
       set({ pinnedTileId: null });
     } else {
       set({ pinnedTileId: tileId });
     }
-    // Pin state is transient (SPEC §8.1) — intentionally not persisted.
   },
 
   toggleSidebar: () => {
@@ -290,7 +408,6 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
   toggleMaximize: (tileId) => {
     const { maximizedTileId, mosaicTree } = get();
     if (maximizedTileId === tileId) {
-      // Restore
       const saved = get().savedTreeBeforeMaximize;
       set({
         maximizedTileId: null,
@@ -298,7 +415,6 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         savedTreeBeforeMaximize: null,
       });
     } else {
-      // Maximize — replace tree with just this tile
       set({
         savedTreeBeforeMaximize: mosaicTree,
         mosaicTree: tileId,
@@ -312,16 +428,93 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     set((state) => ({
       tiles: {
         ...state.tiles,
-        [tileId]: { ...state.tiles[tileId], filePath },
+        [tileId]: {
+          ...state.tiles[tileId],
+          filePath,
+          missingPath: undefined,
+        },
       },
     }));
     schedulePersist();
   },
 
-  createTile: (type, filePath = null) => {
-    const id = nextTileId(type);
+  /**
+   * Guarded buffer switch — SPEC.md §4.0.1.
+   * Returns true if the switch was applied immediately, false if a
+   * Save / Discard / Cancel dialog was opened instead.
+   */
+  requestSetTileFile: (tileId, newFilePath, newMode) => {
+    const { tiles, isLastTileForFile } = get();
+    const tile = tiles[tileId];
+    if (!tile) return true;
+    const oldPath = tile.filePath;
+    const sameFile = oldPath === newFilePath;
+    if (!sameFile && oldPath && tile.mode !== "missing") {
+      const isDirty = useEditorStore.getState().isDirty(tileId);
+      if (isDirty && isLastTileForFile(tileId)) {
+        set({
+          pendingDialog: {
+            kind: "buffer",
+            tileId,
+            newFilePath,
+            newMode,
+            oldFilePath: oldPath,
+          },
+        });
+        return false;
+      }
+    }
+    if (newMode) {
+      get().setTileMode(tileId, newMode);
+    }
+    get().setTileFile(tileId, newFilePath);
+    return true;
+  },
+
+  setTileMode: (tileId, mode) => {
+    set((state) => {
+      const tile = state.tiles[tileId];
+      if (!tile) return state;
+      return {
+        tiles: {
+          ...state.tiles,
+          [tileId]: { ...tile, mode },
+        },
+        // If tile was pinned and mode is no longer editor, discard pin
+        pinnedTileId:
+          state.pinnedTileId === tileId && mode !== "editor"
+            ? null
+            : state.pinnedTileId,
+      };
+    });
+    schedulePersist();
+  },
+
+  setTileMissing: (tileId, missingPath) => {
+    set((state) => {
+      const tile = state.tiles[tileId];
+      if (!tile) return state;
+      return {
+        tiles: {
+          ...state.tiles,
+          [tileId]: {
+            ...tile,
+            mode: "missing" as TileMode,
+            missingPath,
+          },
+        },
+        // Discard pin if this tile was pinned (SPEC.md §4.4)
+        pinnedTileId:
+          state.pinnedTileId === tileId ? null : state.pinnedTileId,
+      };
+    });
+    schedulePersist();
+  },
+
+  createTile: (mode, filePath = null) => {
+    const id = nextTileId(mode);
     set((state) => ({
-      tiles: { ...state.tiles, [id]: { id, type, filePath } },
+      tiles: { ...state.tiles, [id]: { id, mode, filePath } },
       tileCounter: state.tileCounter + 1,
     }));
     return id;
@@ -329,14 +522,13 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
   persistLayout: async (projectDir) => {
     const { mosaicTree, tiles, savedTreeBeforeMaximize } = get();
-    // Persist the "real" tree (before any maximize transformation)
     const treeToSave = savedTreeBeforeMaximize ?? mosaicTree;
     const payload: PersistedLayout = {
       tree: treeToSave,
       tiles: Object.fromEntries(
         Object.entries(tiles).map(([id, t]) => [
           id,
-          { type: t.type, filePath: t.filePath },
+          { mode: t.mode, filePath: t.filePath, missingPath: t.missingPath },
         ]),
       ),
     };
@@ -346,7 +538,7 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         layoutJson: JSON.stringify(payload),
       });
     } catch {
-      // Non-fatal: layout will be lost on reopen but data is safe
+      // Non-fatal
     }
   },
 
@@ -354,18 +546,58 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     try {
       const json = await invoke<string | null>("load_layout", { projectDir });
       if (!json) return false;
-      const data: PersistedLayout = JSON.parse(json);
+      const data: LegacyPersistedLayout = JSON.parse(json);
       if (!data.tree || !data.tiles) return false;
 
-      const tiles: Record<string, TileState> = {};
-      for (const [id, t] of Object.entries(data.tiles)) {
-        tiles[id] = { id, type: t.type, filePath: t.filePath };
-      }
+      const validModes: TileMode[] = [
+        "editor",
+        "preview",
+        "reference",
+        "aichat",
+        "missing",
+      ];
 
-      // Validate that all leaf IDs in the tree have corresponding tile entries
+      // Per SPEC.md §5.5: on layout restore, every tile whose bound file
+      // no longer exists transitions to Missing mode with its original
+      // path preserved as missingPath.
+      const entries = Object.entries(data.tiles);
+      const existenceChecks = await Promise.all(
+        entries.map(async ([, t]) => {
+          if (!t.filePath) return true;
+          try {
+            return await invoke<boolean>("file_exists", { path: t.filePath });
+          } catch {
+            return false;
+          }
+        }),
+      );
+
+      const tiles: Record<string, TileState> = {};
+      entries.forEach(([id, t], idx) => {
+        const mode = (t.mode ?? t.type ?? "editor") as TileMode;
+        const resolvedMode = validModes.includes(mode) ? mode : "editor";
+        const fileExists = existenceChecks[idx];
+
+        if (t.filePath && !fileExists && resolvedMode !== "missing") {
+          tiles[id] = {
+            id,
+            mode: "missing",
+            filePath: null,
+            missingPath: t.filePath,
+          };
+        } else {
+          tiles[id] = {
+            id,
+            mode: resolvedMode,
+            filePath: t.filePath,
+            missingPath: t.missingPath,
+          };
+        }
+      });
+
       const leafIds = getLeaves(data.tree);
       for (const id of leafIds) {
-        if (!tiles[id]) return false; // corrupted layout
+        if (!tiles[id]) return false;
       }
 
       set({
@@ -378,16 +610,69 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
       return false;
     }
   },
+
+  setStatusMessage: (msg) => {
+    if (_statusTimer) clearTimeout(_statusTimer);
+    set({ statusMessage: msg });
+    if (msg) {
+      _statusTimer = setTimeout(() => {
+        set({ statusMessage: null });
+        _statusTimer = null;
+      }, 3000);
+    }
+  },
+
+  toggleWordWrap: (tileId) => {
+    set((state) => ({
+      wordWrap: {
+        ...state.wordWrap,
+        [tileId]: !(state.wordWrap[tileId] ?? true),
+      },
+    }));
+  },
+
+  countTilesForFile: (filePath) => {
+    const { tiles } = get();
+    return Object.values(tiles).filter(
+      (t) => t.filePath === filePath && t.mode !== "missing",
+    ).length;
+  },
+
+  isLastTileForFile: (tileId) => {
+    const { tiles } = get();
+    const tile = tiles[tileId];
+    if (!tile?.filePath) return false;
+    const count = Object.values(tiles).filter(
+      (t) => t.filePath === tile.filePath && t.mode !== "missing",
+    ).length;
+    return count <= 1;
+  },
+
+  setPendingDialog: (dialog) => {
+    set({ pendingDialog: dialog });
+  },
+
+  collectDirtyBuffers: (dirtyTiles) => {
+    const { tiles } = get();
+    const seen = new Map<string, string>();
+    for (const [tileId, isDirty] of Object.entries(dirtyTiles)) {
+      if (!isDirty) continue;
+      const tile = tiles[tileId];
+      if (!tile?.filePath || tile.mode === "missing") continue;
+      if (!seen.has(tile.filePath)) {
+        seen.set(tile.filePath, tileId);
+      }
+    }
+    return Array.from(seen.entries()).map(
+      ([filePath, representativeTileId]) => ({ filePath, representativeTileId }),
+    );
+  },
 }));
 
-// ---------------------------------------------------------------------------
-// Helper: get the "other" branch of the parent at `path`
-// ---------------------------------------------------------------------------
 function getOtherBranch(
   tree: MosaicNode<string>,
   path: MosaicBranch[],
 ): MosaicNode<string> {
-  // Navigate to the parent
   let node: MosaicNode<string> = tree;
   for (let i = 0; i < path.length - 1; i++) {
     if (typeof node === "string") break;

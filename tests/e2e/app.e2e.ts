@@ -75,29 +75,29 @@ async function clickById(testId: string) {
 }
 
 /**
- * Wait for an element with a given data-tile-type attribute to appear.
+ * Wait for an element with a given data-tile-mode attribute to appear.
  */
-async function waitForTileType(tileType: string, timeout = 10000) {
-  const el = $(`//*[@data-tile-type="${tileType}"]`);
+async function waitForTileType(tileMode: string, timeout = 10000) {
+  const el = $(`//*[@data-tile-mode="${tileMode}"]`);
   await el.waitForExist({ timeout });
   return el;
 }
 
 /**
- * Click the first element with data-tile-type via native XPath click.
+ * Click the first element with data-tile-mode via native XPath click.
  */
-async function clickFirstTileOfType(tileType: string) {
-  const el = $(`//*[@data-tile-type="${tileType}"]`);
+async function clickFirstTileOfType(tileMode: string) {
+  const el = $(`//*[@data-tile-mode="${tileMode}"]`);
   await el.waitForExist({ timeout: 5000 });
   await el.click();
   await browser.pause(50);
 }
 
 /**
- * Click the Nth element (0-indexed) with data-tile-type="editor".
+ * Click the Nth element (0-indexed) with data-tile-mode="editor".
  */
 async function clickEditorAtIndex(index: number) {
-  const editors = await $$('//*[@data-tile-type="editor"]');
+  const editors = await $$('//*[@data-tile-mode="editor"]');
   if (editors.length > index) {
     await editors[index].waitForExist({ timeout: 3000 });
     await editors[index].click();
@@ -109,7 +109,7 @@ async function clickEditorAtIndex(index: number) {
  * Return the data-testid of the Nth editor tile (0-indexed), or null.
  */
 async function getEditorTestIdAtIndex(index: number): Promise<string | null> {
-  const editors = await $$('//*[@data-tile-type="editor"]');
+  const editors = await $$('//*[@data-tile-mode="editor"]');
   if (editors.length > index) {
     return editors[index].getAttribute('data-testid');
   }
@@ -118,18 +118,18 @@ async function getEditorTestIdAtIndex(index: number): Promise<string | null> {
 
 /**
  * Count tiles that have both a data-testid starting with "tile-" and
- * a data-tile-type attribute.
+ * a data-tile-mode attribute.
  */
 async function getTileCount(): Promise<number> {
-  const tiles = await $$('//*[starts-with(@data-testid,"tile-") and @data-tile-type]');
+  const tiles = await $$('//*[starts-with(@data-testid,"tile-") and @data-tile-mode]');
   return tiles.length;
 }
 
 /**
- * Click the first tile in the layout (any type) via native XPath click.
+ * Click the first tile in the layout (any mode) via native XPath click.
  */
 async function clickFirstTile() {
-  const el = $('//*[starts-with(@data-testid,"tile-") and @data-tile-type]');
+  const el = $('//*[starts-with(@data-testid,"tile-") and @data-tile-mode]');
   await el.waitForExist({ timeout: 5000 });
   await el.click();
   await browser.pause(50);
@@ -409,17 +409,27 @@ describe("Pane maximize/restore (C-x z)", () => {
 
 describe("Editor typing updates preview", () => {
   before(async () => {
-    // Open alpha.md so editor has content
-    await clickById("app-root");
-    await sendCxChord('b');
-    const switcher = await waitForId("buffer-switcher", 3000);
-    await expect(switcher).toBeDisplayed();
-    const input = await byId("buffer-switcher-input");
-    await input.clearValue();
-    await input.setValue("alpha");
+    // Phase 1 introduces independent Preview tile binding (SPEC §4.0.1) — the
+    // Preview no longer auto-syncs to the focused Editor.  Bind BOTH the
+    // Editor and Preview tiles to alpha.md so they share the same buffer
+    // (Y.Doc) and the typing-updates-preview test can observe propagation.
+    const bindToAlpha = async () => {
+      await sendCxChord('b');
+      const switcher = await waitForId("buffer-switcher", 3000);
+      await expect(switcher).toBeDisplayed();
+      const input = await byId("buffer-switcher-input");
+      await input.clearValue();
+      await input.setValue("alpha");
+      await browser.pause(200);
+      await browser.action('key').down(KEY.RETURN).up(KEY.RETURN).perform();
+      await browser.pause(600);
+    };
+    await clickFirstTileOfType("editor");
     await browser.pause(200);
-    await browser.action('key').down(KEY.RETURN).up(KEY.RETURN).perform();
-    await browser.pause(600);
+    await bindToAlpha();
+    await clickFirstTileOfType("preview");
+    await browser.pause(200);
+    await bindToAlpha();
   });
 
   it("typing in the editor updates the preview within 500ms", async () => {
@@ -484,66 +494,82 @@ describe("Emacs keybindings in editor", () => {
 // Pin behavior (C-x p)
 // ---------------------------------------------------------------------------
 
+/**
+ * Read the layout store's pinnedTileId via the window-exposed introspection
+ * helper installed by main.tsx.  Used by pin/focus tests to assert state
+ * directly rather than waiting for derived DOM testids that depend on tile
+ * counter values which drift between test runs.
+ */
+async function getPinnedTileId(): Promise<string | null> {
+  return browser.execute(() => {
+    const fn = (
+      window as Window & {
+        __notesapp_layout__?: () => { pinnedTileId: string | null };
+      }
+    ).__notesapp_layout__;
+    return fn ? fn().pinnedTileId : null;
+  });
+}
+
+async function getFocusedTileId(): Promise<string | null> {
+  return browser.execute(() => {
+    const fn = (
+      window as Window & {
+        __notesapp_layout__?: () => { focusedTileId: string | null };
+      }
+    ).__notesapp_layout__;
+    return fn ? fn().focusedTileId : null;
+  });
+}
+
 describe("Pin behavior (C-x p)", () => {
   it("C-x p pins the focused editor tile", async () => {
     await clickFirstTileOfType("editor");
-    await browser.pause(200);
+    await browser.pause(300);
 
-    const tileId = await getEditorTestIdAtIndex(0);
+    const focusedBefore = await getFocusedTileId();
+    expect(focusedBefore).toMatch(/^editor-/);
+
     await sendCxChord('p');
+    await browser.pause(500);
 
-    // Status bar should show pinned indicator
-    if (tileId) {
-      const tileNum = tileId.replace("tile-", "");
-      const pinIndicator = await waitForId(`pinned-indicator-${tileNum}`, 2000);
-      await expect(pinIndicator).toBeDisplayed();
-    }
+    const pinned = await getPinnedTileId();
+    expect(pinned).toBe(focusedBefore);
   });
 
   it("pinning a second editor tile unpins the first", async () => {
     // Ensure we have at least two editor tiles
-    const editorEls = await $$('//*[@data-tile-type="editor"]');
+    const editorEls = await $$('//*[@data-tile-mode="editor"]');
     if (editorEls.length < 2) {
       await clickFirstTileOfType("editor");
       await sendCxChord('h');
       await browser.pause(1000);
     }
 
-    const firstId = await getEditorTestIdAtIndex(0);
-
-    // The previous test may have already pinned the first editor. Pin it
-    // only if it is not already pinned — sending C-x p on a pinned tile
-    // would toggle it off, violating this test's precondition.
-    if (firstId) {
-      const firstNum = firstId.replace("tile-", "");
-      const alreadyPinned = await byId(`pinned-indicator-${firstNum}`).isExisting();
-      if (!alreadyPinned) {
-        await clickEditorAtIndex(0);
-        await browser.pause(300);
-        await sendCxChord('p');
-        await browser.pause(500);
-      }
-      const firstPin = await byId(`pinned-indicator-${firstNum}`);
-      await expect(firstPin).toBeDisplayed();
+    // Pin the first editor (no-op if already pinned to it).
+    await clickEditorAtIndex(0);
+    await browser.pause(300);
+    const firstFocused = await getFocusedTileId();
+    let pinned = await getPinnedTileId();
+    if (pinned !== firstFocused) {
+      await sendCxChord('p');
+      await browser.pause(500);
+      pinned = await getPinnedTileId();
     }
+    expect(pinned).toBe(firstFocused);
 
-    const secondId = await getEditorTestIdAtIndex(1);
+    // Focus the second editor and pin it — first pin should clear.
     await clickEditorAtIndex(1);
     await browser.pause(300);
+    const secondFocused = await getFocusedTileId();
+    expect(secondFocused).not.toBe(firstFocused);
 
     await sendCxChord('p');
     await browser.pause(500);
 
-    if (firstId) {
-      const firstNum = firstId.replace("tile-", "");
-      const firstPin = await byId(`pinned-indicator-${firstNum}`);
-      await expect(firstPin).not.toBeDisplayed();
-    }
-    if (secondId) {
-      const secondNum = secondId.replace("tile-", "");
-      const secondPin = await byId(`pinned-indicator-${secondNum}`);
-      await expect(secondPin).toBeDisplayed();
-    }
+    const pinnedAfter = await getPinnedTileId();
+    expect(pinnedAfter).toBe(secondFocused);
+    expect(pinnedAfter).not.toBe(firstFocused);
   });
 });
 
@@ -656,6 +682,13 @@ describe("Multi-level split: horizontal then vertical", () => {
 
   it("C-x v on the bottom-left editor creates a left/right split (vertical divider)", async () => {
     // After the previous split, the new bottom-left tile is auto-focused.
+    // Explicitly re-focus it (last editor by index = bottom-left) to defend
+    // against any focus drift from prior describe blocks running in sequence.
+    const editors = await $$('//*[@data-tile-mode="editor"]');
+    if (editors.length >= 2) {
+      await editors[editors.length - 1].click();
+      await browser.pause(200);
+    }
     await sendCxChord("v");
     await browser.pause(800);
 
@@ -768,6 +801,914 @@ function countLeaves(tree: unknown): number {
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// External file deletion → tile transitions to Missing mode (SPEC.md §5.5)
+//
+// Architecturally exercising: validates the Rust file watcher → Tauri event
+// emit → frontend listen → setTileMissing pipeline end-to-end. PROGRESS.md
+// names this as the most important new scenario in Work Package 18.
+// ---------------------------------------------------------------------------
+
+describe("External deletion transitions bound tile to Missing", () => {
+  const projectDir = process.env.NOTESAPP_E2E_PROJECT_DIR;
+  const fileName = `delete_target_${Date.now()}.md`;
+
+  before(async () => {
+    if (!projectDir) throw new Error("NOTESAPP_E2E_PROJECT_DIR not set");
+    // Create a uniquely-named file inside notes/ so the file watcher
+    // (which watches notes/, references/, .notesapp/ai-context/) emits a
+    // delete event when we unlink it later.
+    fs.writeFileSync(
+      path.join(projectDir, "notes", fileName),
+      "# Delete-target note\n\nWatcher integration test.\n",
+    );
+    // Allow the watcher's debouncer (500ms) to swallow the create event
+    // before any later delete.
+    await browser.pause(700);
+  });
+
+  it("binding a tile to a fresh note then deleting it transitions the tile to Missing within 1500ms", async () => {
+    if (!projectDir) throw new Error("NOTESAPP_E2E_PROJECT_DIR not set");
+    // Focus an editor tile and bind it to our delete-target via C-x b.
+    await clickFirstTileOfType("editor");
+    await browser.pause(200);
+
+    const focusedTileId = await getFocusedTileId();
+    expect(focusedTileId).toMatch(/^editor-/);
+
+    await sendCxChord("b");
+    const switcher = await waitForId("buffer-switcher", 3000);
+    await expect(switcher).toBeDisplayed();
+
+    const input = await byId("buffer-switcher-input");
+    await input.clearValue();
+    // Filter on the unique stem (drop the .md extension and timestamp suffix
+    // is fine, but searching the full name is more robust).
+    await input.setValue("delete_target");
+    await browser.pause(300);
+
+    await browser.action("key").down(KEY.RETURN).up(KEY.RETURN).perform();
+    await browser.pause(700); // wait for the binding to settle
+
+    // Confirm the tile is bound to our file (mode still editor, not missing).
+    const tileBeforeDelete = await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<
+              string,
+              { mode: string; filePath: string | null; missingPath?: string }
+            >;
+          };
+        }
+      ).__notesapp_layout__;
+      return fn && id ? fn().tiles[id] : null;
+    }, focusedTileId);
+    expect(tileBeforeDelete).not.toBeNull();
+    expect(tileBeforeDelete!.mode).toBe("editor");
+    expect(tileBeforeDelete!.filePath).toContain(fileName);
+
+    // Externally delete the file — this should fire a watcher 'delete' event,
+    // which AppShell's file-change listener routes through setTileMissing.
+    fs.unlinkSync(path.join(projectDir, "notes", fileName));
+
+    // Watcher debounce is 500ms; allow generous headroom for IPC + event
+    // dispatch + React re-render before asserting.
+    await browser.waitUntil(
+      async () => {
+        const tile = await browser.execute((id) => {
+          const fn = (
+            window as Window & {
+              __notesapp_layout__?: () => {
+                tiles: Record<string, { mode: string }>;
+              };
+            }
+          ).__notesapp_layout__;
+          return fn && id ? fn().tiles[id] : null;
+        }, focusedTileId);
+        return tile?.mode === "missing";
+      },
+      {
+        timeout: 5000,
+        interval: 200,
+        timeoutMsg: "Tile did not transition to 'missing' mode after delete",
+      },
+    );
+
+    // The MissingTile UI replaces the EditorPane.  Note that MissingTile and
+    // friends use the FULL tile id (e.g. "editor-6") in their data-testid, not
+    // just the numeric suffix.
+    const missingTile = await waitForId(`missing-tile-${focusedTileId}`, 2000);
+    await expect(missingTile).toBeDisplayed();
+  });
+
+  it("the missing tile renders Locate / Open-a-different-buffer / Close action buttons", async () => {
+    // The previous test left at least one missing tile in the layout.
+    const missingTileId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      const id = Object.keys(tiles).find((k) => tiles[k].mode === "missing");
+      return id ?? null;
+    });
+    expect(missingTileId).toMatch(/-/);
+
+    const locate = await waitForId(`missing-locate-${missingTileId}`, 2000);
+    await expect(locate).toBeDisplayed();
+    const openDifferent = await waitForId(
+      `missing-open-different-${missingTileId}`,
+      2000,
+    );
+    await expect(openDifferent).toBeDisplayed();
+    const close = await waitForId(`missing-close-${missingTileId}`, 2000);
+    await expect(close).toBeDisplayed();
+  });
+
+  it("C-x b in a Missing tile opens the Editor picker (lists all text files)", async () => {
+    // Focus the missing tile so C-x b targets it.
+    const missingTileId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return Object.keys(tiles).find((k) => tiles[k].mode === "missing") ?? null;
+    });
+    expect(missingTileId).toMatch(/-/);
+
+    // Use the layout store's focusTile via window introspection — clicking a
+    // missing-tile DOM root is sometimes intercepted by the action buttons.
+    await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { focusTile: (id: string) => void };
+        }
+      ).__notesapp_layout__;
+      if (fn && id) fn().focusTile(id);
+    }, missingTileId);
+    await browser.pause(200);
+
+    await sendCxChord("b");
+    const switcher = await waitForId("buffer-switcher", 3000);
+    await expect(switcher).toBeDisplayed();
+
+    // Editor picker uses the search-glass icon (preview uses an eye). Confirm
+    // the placeholder is the editor variant rather than markdown-only.
+    const inputEl = await byId("buffer-switcher-input");
+    const placeholder = await inputEl.getAttribute("placeholder");
+    expect(placeholder).toBe("Open note…");
+
+    // Editor picker lists the existing markdown notes (alpha/beta/gamma all .md).
+    const alphaItem = await byId("buffer-item-alpha");
+    await expect(alphaItem).toBeDisplayed();
+
+    // Dismiss the picker so subsequent tests start clean.
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(300);
+  });
+
+  it("Locate… rebinds the missing tile to a chosen file via the dialog shim", async () => {
+    if (!projectDir) throw new Error("NOTESAPP_E2E_PROJECT_DIR not set");
+
+    // Identify the missing tile.
+    const missingTileId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return Object.keys(tiles).find((k) => tiles[k].mode === "missing") ?? null;
+    });
+    expect(missingTileId).toMatch(/-/);
+
+    // Pick a file that exists in the project's notes/ to locate.
+    // alpha.md is our scaffolded first note.
+    const locateTarget = path.join(projectDir, "notes", "alpha.md");
+
+    // Set the test dialog override so that clicking Locate returns this path
+    // instead of opening the native GTK file chooser.
+    await browser.execute((target) => {
+      (window as Window & { __notesapp_test_chooser__?: string | null }).__notesapp_test_chooser__ = target;
+    }, locateTarget);
+
+    // Click the Locate button.
+    await clickById(`missing-locate-${missingTileId}`);
+    await browser.pause(500);
+
+    // The tile should now be bound to alpha.md in editor mode (no longer missing).
+    const tileAfter = await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<
+              string,
+              { mode: string; filePath: string | null }
+            >;
+          };
+        }
+      ).__notesapp_layout__;
+      return fn && id ? fn().tiles[id] : null;
+    }, missingTileId);
+
+    expect(tileAfter).not.toBeNull();
+    expect(tileAfter!.mode).toBe("editor");
+    expect(tileAfter!.filePath).toContain("alpha.md");
+
+    // Clean up: close this tile so subsequent tests don't have an extra
+    // editor crowding the mosaic layout.
+    await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { closeTile: (id: string) => void };
+        }
+      ).__notesapp_layout__;
+      if (fn && id) fn().closeTile(id);
+    }, missingTileId);
+    await browser.pause(300);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Editor↔Preview title-bar toggle (SPEC.md §4.0.1, CLAUDE.md §7.3)
+//
+// One-click toggle in place — does NOT open a buffer picker.  Greyed out
+// when the bound file's extension is not .md.
+// ---------------------------------------------------------------------------
+
+describe("Editor↔Preview title-bar toggle", () => {
+  before(async () => {
+    // Dismiss any leftover buffer-switcher overlay before continuing — failed
+    // tests in earlier blocks may have left one open which blocks clicks.
+    await browser.execute(() => {
+      const overlay = document.querySelector(
+        '[data-testid="buffer-switcher-overlay"]',
+      );
+      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    });
+    // Close every Missing tile the deletion suite produced so we are back to
+    // a clean editor + preview baseline.
+    let missingTileIds = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return Object.keys(tiles).filter((k) => tiles[k].mode === "missing");
+    });
+    for (const id of missingTileIds) {
+      try {
+        await clickById(`missing-close-${id}`);
+        await browser.pause(500);
+      } catch {
+        // Best-effort — if a tile already vanished, skip.
+      }
+    }
+    // Defensive: re-check.
+    missingTileIds = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return Object.keys(tiles).filter((k) => tiles[k].mode === "missing");
+    });
+    expect(missingTileIds.length).toBe(0);
+  });
+
+  it("clicking the Editor mode indicator on a .md tile switches it to Preview in place", async () => {
+    // Locate an editor tile bound to a .md file via store introspection.
+    const editorTileId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<
+              string,
+              { mode: string; filePath: string | null }
+            >;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return (
+        Object.keys(tiles).find(
+          (k) =>
+            tiles[k].mode === "editor" &&
+            (tiles[k].filePath ?? "").endsWith(".md"),
+        ) ?? null
+      );
+    });
+    expect(editorTileId).toMatch(/^editor-/);
+
+    await clickById(`tile-mode-indicator-${editorTileId}`);
+    await browser.pause(500);
+
+    // After the toggle the tile id keeps its numeric suffix but its mode
+    // attribute flips to "preview" — verify via the layout store rather than
+    // the testid (which is keyed off mode for the tile container).
+    const newMode = await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      return fn && id ? fn().tiles[id]?.mode : null;
+    }, editorTileId);
+    expect(newMode).toBe("preview");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Preview picker filters out non-.md files (SPEC.md §4.0.2)
+// ---------------------------------------------------------------------------
+
+describe("Preview picker filters non-.md files", () => {
+  const projectDir = process.env.NOTESAPP_E2E_PROJECT_DIR;
+  const txtName = `plain_${Date.now()}.txt`;
+
+  before(async () => {
+    if (!projectDir) throw new Error("NOTESAPP_E2E_PROJECT_DIR not set");
+    fs.writeFileSync(
+      path.join(projectDir, "notes", txtName),
+      "Plain text — should appear in editor picker but not preview picker.\n",
+    );
+    await browser.pause(300);
+  });
+
+  it("the editor picker lists the plain .txt file", async () => {
+    await clickFirstTileOfType("editor");
+    await browser.pause(200);
+    await sendCxChord("b");
+    const switcher = await waitForId("buffer-switcher", 3000);
+    await expect(switcher).toBeDisplayed();
+
+    const input = await byId("buffer-switcher-input");
+    await input.clearValue();
+    await input.setValue("plain_");
+    await browser.pause(400);
+
+    // Non-.md files keep the full filename (incl. extension) in NoteEntry.name,
+    // which BufferSwitcher uses as the testid suffix.
+    const item = await waitForId(`buffer-item-${txtName}`, 3000);
+    await expect(item).toBeDisplayed();
+
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(300);
+  });
+
+  it("the preview picker omits the plain .txt file", async () => {
+    await clickFirstTileOfType("preview");
+    await browser.pause(200);
+    await sendCxChord("b");
+    const switcher = await waitForId("buffer-switcher", 3000);
+    await expect(switcher).toBeDisplayed();
+
+    const input = await byId("buffer-switcher-input");
+    await input.clearValue();
+    await input.setValue("plain_");
+    await browser.pause(400);
+
+    // The .txt file should NOT appear in the preview picker.
+    const exists = await browser.execute((sel) => {
+      return !!document.querySelector(`[data-testid="buffer-item-${sel}"]`);
+    }, txtName);
+    expect(exists).toBe(false);
+
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(300);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Editor↔Preview toggle is disabled when the bound file is not .md
+// (SPEC.md §4.0.1, CLAUDE.md §7.3) — verified via the toggle button's
+// `disabled` attribute since visual greying is style-only.
+// ---------------------------------------------------------------------------
+
+describe("Editor↔Preview toggle disabled on non-.md files", () => {
+  it("the mode indicator is non-interactive (cursor:default) when bound to a .txt buffer", async () => {
+    // Bind any editor tile to the .txt note created by the Preview-filter suite.
+    // Build the exact filename via store introspection (the txt was list_notes_all'd
+    // already, so we just look it up in the project's notes/ directory listing).
+    const editorTileId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<
+              string,
+              { mode: string; filePath: string | null }
+            >;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return Object.keys(tiles).find((k) => tiles[k].mode === "editor") ?? null;
+    });
+    expect(editorTileId).toMatch(/^editor-/);
+
+    // Focus that tile, open the picker, type "plain_" and Enter to bind to .txt.
+    await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { focusTile: (id: string) => void };
+        }
+      ).__notesapp_layout__;
+      if (fn && id) fn().focusTile(id);
+    }, editorTileId);
+    await browser.pause(200);
+    await sendCxChord("b");
+    await waitForId("buffer-switcher", 3000);
+    const input = await byId("buffer-switcher-input");
+    await input.clearValue();
+    await input.setValue("plain_");
+    await browser.pause(400);
+    await browser.action("key").down(KEY.RETURN).up(KEY.RETURN).perform();
+    await browser.pause(700);
+
+    // The toggle is disabled (data-tile-mode is still "editor"; the file path
+    // is .txt so canToggleMode === false).  Inspect the button's `disabled` /
+    // cursor properties via JS rather than relying on visual greying.
+    const indicator = await waitForId(`tile-mode-indicator-${editorTileId}`, 3000);
+    const cursor = await indicator.getCSSProperty("cursor");
+    expect(cursor.value).toBe("default");
+
+    // Clicking should be a no-op — mode stays "editor".
+    await indicator.click();
+    await browser.pause(400);
+    const modeAfterClick = await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      return fn && id ? fn().tiles[id]?.mode : null;
+    }, editorTileId);
+    expect(modeAfterClick).toBe("editor");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cancelling a mode-switch picker rolls back the (intended) mode change
+// (SPEC.md §4.0.1).  The store opens the picker without mutating tile.mode;
+// closing the picker via Esc must leave the tile in its original mode.
+// ---------------------------------------------------------------------------
+
+describe("Cancel mode-switch picker rolls back", () => {
+  it("Esc on the C-x n p picker leaves the tile in editor mode", async () => {
+    // Find an editor tile bound to a .md file.
+    const editorTileId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<
+              string,
+              { mode: string; filePath: string | null }
+            >;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return (
+        Object.keys(tiles).find(
+          (k) =>
+            tiles[k].mode === "editor" &&
+            (tiles[k].filePath ?? "").endsWith(".md"),
+        ) ?? null
+      );
+    });
+    expect(editorTileId).toMatch(/^editor-/);
+
+    await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { focusTile: (id: string) => void };
+        }
+      ).__notesapp_layout__;
+      if (fn && id) fn().focusTile(id);
+    }, editorTileId);
+    await browser.pause(200);
+
+    // C-x n p opens the Preview picker. The store must NOT have mutated
+    // tile.mode at this point (it changes only on confirm via requestSetTileFile).
+    await sendCxChord("n");
+    await browser.action("key").down("p").up("p").perform();
+    const switcher = await waitForId("buffer-switcher", 3000);
+    await expect(switcher).toBeDisplayed();
+
+    // Esc cancels — mode must remain "editor".
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(400);
+    const switcherStillThere = await browser.execute(() => {
+      return !!document.querySelector('[data-testid="buffer-switcher"]');
+    });
+    expect(switcherStillThere).toBe(false);
+
+    const modeAfterCancel = await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string }>;
+          };
+        }
+      ).__notesapp_layout__;
+      return fn && id ? fn().tiles[id]?.mode : null;
+    }, editorTileId);
+    expect(modeAfterCancel).toBe("editor");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-x 0 last-tile-of-dirty-buffer triggers Save/Discard/Cancel (SPEC.md §4.0.1)
+// ---------------------------------------------------------------------------
+
+describe("C-x 0 last-tile-of-dirty-buffer dialog", () => {
+  const projectDir = process.env.NOTESAPP_E2E_PROJECT_DIR;
+  const dialogFile = `dialog_target_${Date.now()}.md`;
+
+  before(async () => {
+    if (!projectDir) throw new Error("NOTESAPP_E2E_PROJECT_DIR not set");
+    // Dismiss any leftover overlay from earlier blocks.
+    await browser.execute(() => {
+      const overlays = [
+        '[data-testid="buffer-switcher-overlay"]',
+        '[data-testid="unsaved-dialog-overlay"]',
+        '[data-testid="missing-recovery-overlay"]',
+        '[data-testid="quit-dialog-overlay"]',
+      ];
+      for (const sel of overlays) {
+        const el = document.querySelector(sel);
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      }
+    });
+
+    fs.writeFileSync(
+      path.join(projectDir, "notes", dialogFile),
+      "# Dialog target\n\nbody\n",
+    );
+    await browser.pause(300);
+
+    // Bind an editor tile to this file, type into it to make it dirty.
+    await clickFirstTileOfType("editor");
+    await browser.pause(200);
+    await sendCxChord("b");
+    await waitForId("buffer-switcher", 3000);
+    const input = await byId("buffer-switcher-input");
+    await input.clearValue();
+    await input.setValue("dialog_target");
+    await browser.pause(300);
+    await browser.action("key").down(KEY.RETURN).up(KEY.RETURN).perform();
+    await browser.pause(700);
+
+    const cmContent = await $(".cm-content");
+    await cmContent.click();
+    await browser.pause(200);
+    // Append a single character to mark dirty.
+    await browser.action("key")
+      .down(KEY.CTRL).down(KEY.END).up(KEY.END).up(KEY.CTRL)
+      .perform();
+    await browser.pause(100);
+    await browser.action("key").down("x").up("x").perform();
+    await browser.pause(400);
+  });
+
+  it("C-x 0 on the last tile bound to a dirty buffer opens the unsaved-changes dialog", async () => {
+    // Confirm dirty state.
+    const editorTileId = await browser.execute((name) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string; filePath: string | null }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return (
+        Object.keys(tiles).find(
+          (k) =>
+            tiles[k].mode === "editor" && tiles[k].filePath?.endsWith(name),
+        ) ?? null
+      );
+    }, dialogFile);
+    expect(editorTileId).toMatch(/^editor-/);
+
+    // Focus the bound editor tile via store API (avoids click landing on a
+    // sibling tile that prior tests may have shifted into focus).
+    await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { focusTile: (id: string) => void };
+        }
+      ).__notesapp_layout__;
+      if (fn && id) fn().focusTile(id);
+    }, editorTileId);
+    await browser.pause(200);
+
+    await sendCxChord("0");
+    const dialog = await waitForId("unsaved-dialog", 3000);
+    await expect(dialog).toBeDisplayed();
+  });
+
+  it("Cancel dismisses the dialog and the tile remains", async () => {
+    const tilesBefore = await getTileCount();
+    await clickById("unsaved-dialog-cancel");
+    await browser.pause(400);
+    const dialog = await byId("unsaved-dialog");
+    await expect(dialog).not.toBeDisplayed();
+    const tilesAfter = await getTileCount();
+    expect(tilesAfter).toBe(tilesBefore);
+  });
+
+  it("Discard closes the tile and clears its dirty state", async () => {
+    // Re-trigger the dialog: the tile is still focused and still dirty.
+    const editorTileId = await browser.execute((name) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string; filePath: string | null }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return (
+        Object.keys(tiles).find(
+          (k) =>
+            tiles[k].mode === "editor" && tiles[k].filePath?.endsWith(name),
+        ) ?? null
+      );
+    }, dialogFile);
+    expect(editorTileId).toMatch(/^editor-/);
+
+    await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { focusTile: (id: string) => void };
+        }
+      ).__notesapp_layout__;
+      if (fn && id) fn().focusTile(id);
+    }, editorTileId);
+    await browser.pause(200);
+
+    const tilesBefore = await getTileCount();
+    await sendCxChord("0");
+    await waitForId("unsaved-dialog", 3000);
+
+    await clickById("unsaved-dialog-discard");
+    await browser.pause(800);
+
+    // Dialog gone, tile gone.
+    const dialogStillThere = await browser.execute(() => {
+      return !!document.querySelector('[data-testid="unsaved-dialog"]');
+    });
+    expect(dialogStillThere).toBe(false);
+
+    const tilesAfter = await getTileCount();
+    expect(tilesAfter).toBe(tilesBefore - 1);
+
+    // The tile is gone from the layout store too.
+    const stillBound = await browser.execute((name) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { filePath: string | null }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      return Object.values(tiles).some((t) => t.filePath?.endsWith(name));
+    }, dialogFile);
+    expect(stillBound).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Consolidated quit dialog (SPEC.md §4.0.1) — Cancel branch only.
+// Save/Discard branches terminate the session, so they're covered by Vitest.
+// ---------------------------------------------------------------------------
+
+describe("Consolidated quit dialog", () => {
+  it("shows the quit dialog with dirty buffers listed", async () => {
+    // Find an editor tile and its file path.
+    const tileInfo = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { mode: string; filePath: string | null }>;
+          };
+        }
+      ).__notesapp_layout__;
+      const tiles = fn ? fn().tiles : {};
+      for (const [id, t] of Object.entries(tiles)) {
+        if (t.mode === "editor" && t.filePath) {
+          return { id, filePath: t.filePath };
+        }
+      }
+      return null;
+    });
+    expect(tileInfo).not.toBeNull();
+
+    // Mark the tile dirty and trigger the quit dialog via the store.
+    await browser.execute((info) => {
+      const layoutFn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            setPendingDialog: (d: unknown) => void;
+          };
+        }
+      ).__notesapp_layout__;
+      if (!layoutFn || !info) return;
+      const store = layoutFn();
+      // Extract the filename for the dialog listing.
+      const fileName = info.filePath.split("/").pop() ?? info.filePath;
+      store.setPendingDialog({
+        kind: "quit",
+        dirtyBuffers: [
+          {
+            filePath: info.filePath,
+            representativeTileId: info.id,
+          },
+        ],
+      });
+    }, tileInfo);
+    await browser.pause(300);
+
+    // Assert the quit dialog appeared.
+    const dialog = await waitForId("quit-dialog", 3000);
+    await expect(dialog).toBeDisplayed();
+
+    // Assert the dirty buffer is listed by filename.
+    const fileName = tileInfo!.filePath.split("/").pop()!;
+    const item = await waitForId(`quit-dialog-item-${fileName}`, 2000);
+    await expect(item).toBeDisplayed();
+
+    // The save checkbox should default to checked.
+    const checkbox = await byId(`quit-dialog-save-${fileName}`);
+    const checked = await checkbox.getAttribute("checked");
+    // WebKit returns "true" or null for checked attribute
+    expect(checked === "true" || checked === "").toBeTruthy();
+  });
+
+  it("Cancel dismisses the quit dialog without saving or quitting", async () => {
+    // The dialog should still be open from the previous test.
+    await clickById("quit-dialog-cancel");
+    await browser.pause(300);
+
+    // Dialog should be dismissed.
+    const dialogGone = await browser.execute(() => {
+      return document.querySelector('[data-testid="quit-dialog"]') === null;
+    });
+    expect(dialogGone).toBe(true);
+
+    // Tiles still exist — the app did not quit.
+    const count = await getTileCount();
+    expect(count).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drag from Explorer sidebar onto tile (SPEC.md §4.2 / CLAUDE.md §4.2)
+//
+// WebKitGTK WebDriver cannot synthesize real HTML5 drag events via the
+// W3C Actions API. This test dispatches synthetic DragEvents from
+// browser.execute() to verify the React onDrop handler wiring.
+// See COMPAT.md for the native-gesture gap note.
+// ---------------------------------------------------------------------------
+
+describe("Drag from Explorer onto tile rebinds", () => {
+  it("dropping a sidebar file onto an editor tile rebinds it", async () => {
+    // Ensure the sidebar is visible.
+    const sidebarVisible = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { sidebarVisible: boolean };
+        }
+      ).__notesapp_layout__;
+      return fn ? fn().sidebarVisible : false;
+    });
+    if (!sidebarVisible) {
+      await sendCtrlShift("b");
+      await browser.pause(300);
+    }
+
+    // Get the focused tile id and its current file.
+    await clickFirstTileOfType("editor");
+    await browser.pause(200);
+    const focusedInfo = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            focusedTileId: string | null;
+            tiles: Record<string, { mode: string; filePath: string | null }>;
+          };
+        }
+      ).__notesapp_layout__;
+      if (!fn) return null;
+      const s = fn();
+      const id = s.focusedTileId;
+      if (!id) return null;
+      return { id, filePath: s.tiles[id]?.filePath };
+    });
+    expect(focusedInfo).not.toBeNull();
+
+    // Pick a note that is different from the currently bound file.
+    const allNotes = await browser.execute(() => {
+      const el = document.querySelectorAll('[data-testid^="sidebar-file-"]');
+      return Array.from(el).map((e) => ({
+        testId: e.getAttribute("data-testid") ?? "",
+        title: e.getAttribute("title") ?? "",
+      }));
+    });
+    expect(allNotes.length).toBeGreaterThan(0);
+
+    // Find a sidebar note whose path differs from the current binding.
+    // The sidebar title attribute is: "notename.md — drag to open in a tile"
+    // Extract the path from data-testid ("sidebar-file-notename") and find
+    // the note in projectStore.
+    const projectDir = process.env.NOTESAPP_E2E_PROJECT_DIR;
+    if (!projectDir) throw new Error("NOTESAPP_E2E_PROJECT_DIR not set");
+
+    // We'll use alpha.md as our drag source, constructing the full path.
+    // If the tile is already on alpha.md, use beta.md instead.
+    const currentFile = focusedInfo!.filePath ?? "";
+    const dragName = currentFile.endsWith("alpha.md") ? "beta" : "alpha";
+    const dragPath = `${projectDir}/notes/${dragName}.md`;
+
+    // Dispatch synthetic drag events via browser.execute.
+    const dropped = await browser.execute(
+      (sidebarTestId, tileTestId, notePath) => {
+        const src = document.querySelector(
+          `[data-testid="${sidebarTestId}"]`,
+        );
+        const tgt = document.querySelector(
+          `[data-testid="${tileTestId}"]`,
+        );
+        if (!src || !tgt) return false;
+        const dt = new DataTransfer();
+        dt.setData("text/notesapp-path", notePath);
+        dt.setData("text/plain", notePath);
+        src.dispatchEvent(
+          new DragEvent("dragstart", {
+            dataTransfer: dt,
+            bubbles: true,
+          }),
+        );
+        tgt.dispatchEvent(
+          new DragEvent("dragover", {
+            dataTransfer: dt,
+            bubbles: true,
+          }),
+        );
+        tgt.dispatchEvent(
+          new DragEvent("drop", { dataTransfer: dt, bubbles: true }),
+        );
+        return true;
+      },
+      `sidebar-file-${dragName}`,
+      `tile-${focusedInfo!.id}`,
+      dragPath,
+    );
+    expect(dropped).toBe(true);
+    await browser.pause(500);
+
+    // Assert the tile is now bound to the dragged file.
+    const newFilePath = await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => {
+            tiles: Record<string, { filePath: string | null }>;
+          };
+        }
+      ).__notesapp_layout__;
+      return fn && id ? fn().tiles[id]?.filePath : null;
+    }, focusedInfo!.id);
+    expect(newFilePath).toContain(`${dragName}.md`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layout persistence — kept LAST so its assertions are not perturbed by the
+// dynamic file-add / file-delete scenarios above.
+// ---------------------------------------------------------------------------
+
 describe("Layout persistence", () => {
   it("tiles exist, implying layout was initialized", async () => {
     const count = await getTileCount();
@@ -810,7 +1751,7 @@ describe("Layout persistence", () => {
     const layoutPath = path.join(projectDir, ".notesapp", "layout.json");
     const persisted = JSON.parse(fs.readFileSync(layoutPath, "utf-8")) as {
       tree: unknown;
-      tiles: Record<string, { type: string; filePath: string | null }>;
+      tiles: Record<string, { mode: string; filePath: string | null }>;
     };
 
     // Shape assertions — these are the invariants AppShell's loadLayout relies
@@ -837,9 +1778,14 @@ describe("Layout persistence", () => {
     expect(leafIds.length).toBeGreaterThan(0);
     for (const id of leafIds) {
       expect(persisted.tiles[id]).toBeDefined();
+      // Phase 1 valid persisted modes: editor, preview, missing (per SPEC §5.5
+      // a Missing tile that survives a restart re-resolves on next launch).
+      // reference/aichat are stubs in Phase 1 and not produced by any test in
+      // this suite, but loadLayout would round-trip them too.
       expect(
-        persisted.tiles[id].type === "editor" ||
-          persisted.tiles[id].type === "preview",
+        ["editor", "preview", "missing", "reference", "aichat"].includes(
+          persisted.tiles[id].mode,
+        ),
       ).toBe(true);
     }
   });

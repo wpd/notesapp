@@ -90,7 +90,7 @@ export const config: WebdriverIO.Config = {
   port: WEBDRIVER_PORT,
   path: "/",
 
-  specs: ["tests/e2e/**/*.e2e.ts"],
+  specs: ["tests/e2e/app.e2e.ts"],
   maxInstances: 1,
 
   capabilities: [

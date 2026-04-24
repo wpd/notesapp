@@ -5,3 +5,4 @@
 pub mod layout;
 pub mod notes;
 pub mod project;
+pub mod watcher;

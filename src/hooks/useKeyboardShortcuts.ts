@@ -2,31 +2,25 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
-/**
- * Global keyboard shortcut handler for pane-management chords.
- *
- * Implements Emacs-style C-x prefix: press Ctrl+X, then the action key.
- *
- * Bound at the document level (capture phase) so it fires even when
- * CodeMirror has focus.
- */
-
 import { useEffect, useRef } from "react";
-import useLayoutStore from "../stores/layoutStore";
+import useLayoutStore, { TileMode } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 import useProjectStore from "../stores/projectStore";
 
 interface ShortcutOptions {
-  onOpenBufferSwitcher: () => void;
+  onOpenBufferSwitcher: (tileId: string, pickerMode: string) => void;
   onOpenFindFile: () => void;
+  onModeSwitch: (tileId: string, mode: TileMode) => void;
 }
 
 export function useKeyboardShortcuts({
   onOpenBufferSwitcher,
   onOpenFindFile,
+  onModeSwitch,
 }: ShortcutOptions): void {
-  // true when the user has pressed C-x and we're waiting for the second key
   const prefixActive = useRef(false);
+  // Track C-x n prefix (mode-switch chord)
+  const nPrefixActive = useRef(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -34,11 +28,12 @@ export function useKeyboardShortcuts({
       const editor = useEditorStore.getState();
       const project = useProjectStore.getState();
 
-      // ---- Ctrl+Shift+B  — toggle sidebar (not part of C-x chord) ----
+      // ---- Ctrl+Shift+B — toggle sidebar ----
       if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
         e.preventDefault();
         layout.toggleSidebar();
         prefixActive.current = false;
+        nPrefixActive.current = false;
         return;
       }
 
@@ -46,40 +41,93 @@ export function useKeyboardShortcuts({
       if (e.ctrlKey && e.key === "x") {
         e.preventDefault();
         prefixActive.current = true;
+        nPrefixActive.current = false;
         return;
       }
 
+      // ---- C-x n prefix (mode switch) ----
+      if (prefixActive.current && e.key === "n" && !e.ctrlKey) {
+        e.preventDefault();
+        prefixActive.current = false;
+        nPrefixActive.current = true;
+        return;
+      }
+
+      // ---- Handle C-x n {n,p,r,c} ----
+      if (nPrefixActive.current) {
+        nPrefixActive.current = false;
+        const focused = layout.focusedTileId;
+        if (!focused) return;
+
+        switch (e.key) {
+          case "n": // C-x n n — Editor mode
+            e.preventDefault();
+            onModeSwitch(focused, "editor");
+            return;
+          case "p": // C-x n p — Preview mode
+            e.preventDefault();
+            {
+              const tile = layout.tiles[focused];
+              if (tile && tile.filePath && !tile.filePath.endsWith(".md")) {
+                layout.setStatusMessage(
+                  "Preview is only available for markdown files",
+                );
+                return;
+              }
+            }
+            onModeSwitch(focused, "preview");
+            return;
+          case "r": // C-x n r — Reference mode (stub in Phase 1)
+            e.preventDefault();
+            onModeSwitch(focused, "reference");
+            return;
+          case "c": // C-x n c — AI Chat mode (stub in Phase 1)
+            e.preventDefault();
+            onModeSwitch(focused, "aichat");
+            return;
+          default:
+            return;
+        }
+      }
+
       if (!prefixActive.current) return;
-      prefixActive.current = false; // consume prefix regardless
+      prefixActive.current = false;
 
       const focused = layout.focusedTileId;
 
       switch (true) {
-        // C-x o — focus next pane
-        case e.key === "o" && !e.ctrlKey: {
+        // C-x o — focus next tile
+        case e.key === "o" && !e.ctrlKey && !e.shiftKey: {
           e.preventDefault();
           layout.focusNextTile();
           break;
         }
 
-        // C-x h — split horizontal (horizontal divider = tiles stacked top/bottom)
+        // C-x O — focus previous tile
+        case e.key === "O" && !e.ctrlKey: {
+          e.preventDefault();
+          layout.focusPrevTile();
+          break;
+        }
+
+        // C-x h — split horizontal
         case e.key === "h" && !e.ctrlKey: {
           e.preventDefault();
           if (focused) layout.splitTile(focused, "column");
           break;
         }
 
-        // C-x v — split vertical (vertical divider = tiles side by side)
+        // C-x v — split vertical
         case e.key === "v" && !e.ctrlKey: {
           e.preventDefault();
           if (focused) layout.splitTile(focused, "row");
           break;
         }
 
-        // C-x 0 — close current pane
-        case e.key === "0" && !e.ctrlKey: {
+        // C-x 0 or C-x w — close current tile
+        case (e.key === "0" || e.key === "w") && !e.ctrlKey: {
           e.preventDefault();
-          if (focused) layout.closeTile(focused);
+          if (focused) layout.requestCloseTile(focused);
           break;
         }
 
@@ -90,10 +138,24 @@ export function useKeyboardShortcuts({
           break;
         }
 
-        // C-x b — buffer switcher
+        // C-x b — buffer switcher (modal by tile mode)
         case e.key === "b" && !e.ctrlKey: {
           e.preventDefault();
-          onOpenBufferSwitcher();
+          if (focused) {
+            const tile = layout.tiles[focused];
+            if (!tile) break;
+            const pickerMode =
+              tile.mode === "preview"
+                ? "preview"
+                : tile.mode === "missing"
+                  ? "editor"
+                  : tile.mode === "reference"
+                    ? "reference-stub"
+                    : tile.mode === "aichat"
+                      ? "aichat-stub"
+                      : "editor";
+            onOpenBufferSwitcher(focused, pickerMode);
+          }
           break;
         }
 
@@ -109,7 +171,7 @@ export function useKeyboardShortcuts({
           e.preventDefault();
           if (focused) {
             const tile = layout.tiles[focused];
-            if (tile?.filePath) {
+            if (tile?.filePath && (tile.mode === "editor" || tile.mode === "preview")) {
               editor
                 .saveFile(focused, tile.filePath)
                 .then(() => {
@@ -123,7 +185,7 @@ export function useKeyboardShortcuts({
           break;
         }
 
-        // C-x C-f — find file (can create new notes)
+        // C-x C-f — find file
         case e.key === "f" && e.ctrlKey: {
           e.preventDefault();
           onOpenFindFile();
@@ -135,10 +197,9 @@ export function useKeyboardShortcuts({
       }
     };
 
-    // Use capture phase so we intercept before CodeMirror
     document.addEventListener("keydown", handler, true);
     return () => {
       document.removeEventListener("keydown", handler, true);
     };
-  }, [onOpenBufferSwitcher, onOpenFindFile]);
+  }, [onOpenBufferSwitcher, onOpenFindFile, onModeSwitch]);
 }

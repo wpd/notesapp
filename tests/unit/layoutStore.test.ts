@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import useLayoutStore from "../../src/stores/layoutStore";
 import useProjectStore from "../../src/stores/projectStore";
+import useEditorStore from "../../src/stores/editorStore";
 import { getLeaves } from "react-mosaic-component";
 
 function resetStore() {
@@ -17,8 +18,15 @@ function resetStore() {
     maximizedTileId: null,
     savedTreeBeforeMaximize: null,
     tileCounter: 0,
+    pendingDialog: null,
   });
   useProjectStore.setState({ projectDir: null });
+  useEditorStore.setState({
+    ydocs: {},
+    dirtyStates: {},
+    autosaveTimers: {},
+    cursorLines: {},
+  });
 }
 
 beforeEach(resetStore);
@@ -37,8 +45,8 @@ describe("layoutStore", () => {
       const { tiles, mosaicTree } = useLayoutStore.getState();
       const tileList = Object.values(tiles);
       expect(tileList.length).toBe(2);
-      expect(tileList.some((t) => t.type === "editor")).toBe(true);
-      expect(tileList.some((t) => t.type === "preview")).toBe(true);
+      expect(tileList.some((t) => t.mode === "editor")).toBe(true);
+      expect(tileList.some((t) => t.mode === "preview")).toBe(true);
       expect(mosaicTree).not.toBeNull();
     });
 
@@ -56,7 +64,7 @@ describe("layoutStore", () => {
     it("adds a new tile and splits the tree", () => {
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       const before = getLeaves(useLayoutStore.getState().mosaicTree!).length;
 
@@ -69,13 +77,13 @@ describe("layoutStore", () => {
     it("creates a new tile of the same type as the split tile", () => {
       useLayoutStore.getState().initDefaultLayout();
       const previewId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "preview",
+        (t) => t.mode === "preview",
       )!.id;
 
       useLayoutStore.getState().splitTile(previewId, "column");
 
       const newTiles = Object.values(useLayoutStore.getState().tiles).filter(
-        (t) => t.type === "preview",
+        (t) => t.mode === "preview",
       );
       expect(newTiles.length).toBe(2);
     });
@@ -84,7 +92,7 @@ describe("layoutStore", () => {
       useLayoutStore.getState().initDefaultLayout();
 
       let currentId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
 
       const depth = 8;
@@ -113,7 +121,7 @@ describe("layoutStore", () => {
     it("removes the tile from the layout", () => {
       useLayoutStore.getState().initDefaultLayout();
       const { tiles } = useLayoutStore.getState();
-      const editorId = Object.values(tiles).find((t) => t.type === "editor")!.id;
+      const editorId = Object.values(tiles).find((t) => t.mode === "editor")!.id;
 
       useLayoutStore.getState().closeTile(editorId);
 
@@ -125,7 +133,7 @@ describe("layoutStore", () => {
     it("does not close the last tile", () => {
       useLayoutStore.setState({
         mosaicTree: "editor-1",
-        tiles: { "editor-1": { id: "editor-1", type: "editor", filePath: null } },
+        tiles: { "editor-1": { id: "editor-1", mode: "editor", filePath: null } },
       });
 
       useLayoutStore.getState().closeTile("editor-1");
@@ -137,7 +145,7 @@ describe("layoutStore", () => {
   describe("togglePin", () => {
     it("pins an editor tile", () => {
       useLayoutStore.setState({
-        tiles: { "editor-1": { id: "editor-1", type: "editor", filePath: null } },
+        tiles: { "editor-1": { id: "editor-1", mode: "editor", filePath: null } },
         pinnedTileId: null,
       });
 
@@ -148,7 +156,7 @@ describe("layoutStore", () => {
 
     it("unpins a tile when toggled again", () => {
       useLayoutStore.setState({
-        tiles: { "editor-1": { id: "editor-1", type: "editor", filePath: null } },
+        tiles: { "editor-1": { id: "editor-1", mode: "editor", filePath: null } },
         pinnedTileId: "editor-1",
       });
 
@@ -160,8 +168,8 @@ describe("layoutStore", () => {
     it("pinning a second tile unpins the first", () => {
       useLayoutStore.setState({
         tiles: {
-          "editor-1": { id: "editor-1", type: "editor", filePath: null },
-          "editor-2": { id: "editor-2", type: "editor", filePath: null },
+          "editor-1": { id: "editor-1", mode: "editor", filePath: null },
+          "editor-2": { id: "editor-2", mode: "editor", filePath: null },
         },
         pinnedTileId: "editor-1",
       });
@@ -173,7 +181,7 @@ describe("layoutStore", () => {
 
     it("does not pin a preview tile", () => {
       useLayoutStore.setState({
-        tiles: { "preview-1": { id: "preview-1", type: "preview", filePath: null } },
+        tiles: { "preview-1": { id: "preview-1", mode: "preview", filePath: null } },
         pinnedTileId: null,
       });
 
@@ -187,7 +195,7 @@ describe("layoutStore", () => {
     it("maximizes a tile by replacing the tree with that leaf", () => {
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
 
       useLayoutStore.getState().toggleMaximize(editorId);
@@ -200,7 +208,7 @@ describe("layoutStore", () => {
       useLayoutStore.getState().initDefaultLayout();
       const originalTree = useLayoutStore.getState().mosaicTree;
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
 
       useLayoutStore.getState().toggleMaximize(editorId);
@@ -248,7 +256,7 @@ describe("layoutStore", () => {
     it("does not invoke save_layout when no project dir is set", async () => {
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       useLayoutStore.getState().splitTile(editorId, "row");
       await flushPersistTimer();
@@ -263,7 +271,7 @@ describe("layoutStore", () => {
       useProjectStore.setState({ projectDir: "/proj" });
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       getInvokeMock().mockClear();
       useLayoutStore.getState().splitTile(editorId, "row");
@@ -279,7 +287,7 @@ describe("layoutStore", () => {
       useProjectStore.setState({ projectDir: "/proj" });
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       getInvokeMock().mockClear();
       useLayoutStore.getState().closeTile(editorId);
@@ -294,7 +302,7 @@ describe("layoutStore", () => {
       useProjectStore.setState({ projectDir: "/proj" });
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       getInvokeMock().mockClear();
       useLayoutStore.getState().toggleMaximize(editorId);
@@ -309,7 +317,7 @@ describe("layoutStore", () => {
       useProjectStore.setState({ projectDir: "/proj" });
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       getInvokeMock().mockClear();
       useLayoutStore.getState().setTileFile(editorId, "/proj/note.md");
@@ -337,7 +345,7 @@ describe("layoutStore", () => {
       useProjectStore.setState({ projectDir: "/proj" });
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       getInvokeMock().mockClear();
       useLayoutStore.getState().togglePin(editorId);
@@ -353,7 +361,7 @@ describe("layoutStore", () => {
       useProjectStore.setState({ projectDir: "/proj" });
       useLayoutStore.getState().initDefaultLayout();
       const editorId = Object.values(useLayoutStore.getState().tiles).find(
-        (t) => t.type === "editor",
+        (t) => t.mode === "editor",
       )!.id;
       getInvokeMock().mockClear();
       // Three structural changes in rapid succession
@@ -368,6 +376,215 @@ describe("layoutStore", () => {
         (c) => c[0] === "save_layout",
       );
       expect(saveCalls.length).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SPEC.md §4.0.1 — last-tile release guard
+  // -------------------------------------------------------------------------
+
+  describe("requestCloseTile", () => {
+    beforeEach(() => {
+      // Two editor tiles bound to distinct files, plus a row-split tree
+      useLayoutStore.setState({
+        mosaicTree: {
+          direction: "row",
+          first: "editor-1",
+          second: "editor-2",
+          splitPercentage: 50,
+        },
+        tiles: {
+          "editor-1": { id: "editor-1", mode: "editor", filePath: "/p/a.md" },
+          "editor-2": { id: "editor-2", mode: "editor", filePath: "/p/b.md" },
+        },
+        focusedTileId: "editor-1",
+      });
+    });
+
+    it("closes immediately when buffer is clean", () => {
+      useLayoutStore.getState().requestCloseTile("editor-1");
+      expect(useLayoutStore.getState().pendingDialog).toBeNull();
+      expect(useLayoutStore.getState().tiles["editor-1"]).toBeUndefined();
+    });
+
+    it("opens Save/Discard/Cancel dialog when last tile of a dirty buffer", () => {
+      useEditorStore.getState().setDirty("editor-1", true);
+      useLayoutStore.getState().requestCloseTile("editor-1");
+      const pending = useLayoutStore.getState().pendingDialog;
+      expect(pending?.kind).toBe("close");
+      if (pending?.kind === "close") {
+        expect(pending.tileId).toBe("editor-1");
+        expect(pending.filePath).toBe("/p/a.md");
+      }
+      // The tile itself must still exist — close is deferred
+      expect(useLayoutStore.getState().tiles["editor-1"]).toBeDefined();
+    });
+
+    it("closes without prompting when another tile still holds the buffer", () => {
+      // Rebind editor-2 to the same file as editor-1
+      useLayoutStore.setState({
+        tiles: {
+          "editor-1": { id: "editor-1", mode: "editor", filePath: "/p/a.md" },
+          "editor-2": { id: "editor-2", mode: "editor", filePath: "/p/a.md" },
+        },
+      });
+      useEditorStore.getState().setDirty("editor-1", true);
+      useLayoutStore.getState().requestCloseTile("editor-1");
+      expect(useLayoutStore.getState().pendingDialog).toBeNull();
+      expect(useLayoutStore.getState().tiles["editor-1"]).toBeUndefined();
+    });
+
+    it("skips the guard for Missing tiles", () => {
+      useLayoutStore.setState({
+        tiles: {
+          "editor-1": {
+            id: "editor-1",
+            mode: "missing",
+            filePath: null,
+            missingPath: "/p/a.md",
+          },
+          "editor-2": { id: "editor-2", mode: "editor", filePath: "/p/b.md" },
+        },
+      });
+      useEditorStore.getState().setDirty("editor-1", true);
+      useLayoutStore.getState().requestCloseTile("editor-1");
+      expect(useLayoutStore.getState().pendingDialog).toBeNull();
+      expect(useLayoutStore.getState().tiles["editor-1"]).toBeUndefined();
+    });
+  });
+
+  describe("requestSetTileFile", () => {
+    beforeEach(() => {
+      useLayoutStore.setState({
+        mosaicTree: "editor-1",
+        tiles: {
+          "editor-1": { id: "editor-1", mode: "editor", filePath: "/p/a.md" },
+        },
+        focusedTileId: "editor-1",
+      });
+    });
+
+    it("applies immediately when buffer is clean", () => {
+      const applied = useLayoutStore
+        .getState()
+        .requestSetTileFile("editor-1", "/p/b.md");
+      expect(applied).toBe(true);
+      expect(useLayoutStore.getState().tiles["editor-1"].filePath).toBe(
+        "/p/b.md",
+      );
+    });
+
+    it("opens a buffer-release dialog when switching a last-of-dirty tile", () => {
+      useEditorStore.getState().setDirty("editor-1", true);
+      const applied = useLayoutStore
+        .getState()
+        .requestSetTileFile("editor-1", "/p/b.md", "preview");
+      expect(applied).toBe(false);
+      const pending = useLayoutStore.getState().pendingDialog;
+      expect(pending?.kind).toBe("buffer");
+      if (pending?.kind === "buffer") {
+        expect(pending.tileId).toBe("editor-1");
+        expect(pending.newFilePath).toBe("/p/b.md");
+        expect(pending.newMode).toBe("preview");
+        expect(pending.oldFilePath).toBe("/p/a.md");
+      }
+      // Binding should not have changed yet
+      expect(useLayoutStore.getState().tiles["editor-1"].filePath).toBe(
+        "/p/a.md",
+      );
+      expect(useLayoutStore.getState().tiles["editor-1"].mode).toBe("editor");
+    });
+
+    it("treats same-file set as a no-op release (no dialog)", () => {
+      useEditorStore.getState().setDirty("editor-1", true);
+      const applied = useLayoutStore
+        .getState()
+        .requestSetTileFile("editor-1", "/p/a.md", "preview");
+      expect(applied).toBe(true);
+      expect(useLayoutStore.getState().pendingDialog).toBeNull();
+      expect(useLayoutStore.getState().tiles["editor-1"].mode).toBe("preview");
+    });
+  });
+
+  describe("collectDirtyBuffers", () => {
+    it("deduplicates by filePath across multiple dirty tiles", () => {
+      useLayoutStore.setState({
+        tiles: {
+          "editor-1": { id: "editor-1", mode: "editor", filePath: "/p/a.md" },
+          "editor-2": { id: "editor-2", mode: "editor", filePath: "/p/a.md" },
+          "editor-3": { id: "editor-3", mode: "editor", filePath: "/p/b.md" },
+        },
+      });
+      const dirty = useLayoutStore.getState().collectDirtyBuffers({
+        "editor-1": true,
+        "editor-2": true,
+        "editor-3": true,
+      });
+      expect(dirty.length).toBe(2);
+      const paths = dirty.map((d) => d.filePath).sort();
+      expect(paths).toEqual(["/p/a.md", "/p/b.md"]);
+    });
+
+    it("skips Missing tiles and clean tiles", () => {
+      useLayoutStore.setState({
+        tiles: {
+          "editor-1": { id: "editor-1", mode: "editor", filePath: "/p/a.md" },
+          "editor-2": {
+            id: "editor-2",
+            mode: "missing",
+            filePath: null,
+            missingPath: "/p/b.md",
+          },
+        },
+      });
+      const dirty = useLayoutStore.getState().collectDirtyBuffers({
+        "editor-1": false,
+        "editor-2": true,
+      });
+      expect(dirty).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SPEC.md §5.5 — layout restore verifies file existence
+  // -------------------------------------------------------------------------
+
+  describe("loadLayout with missing files", () => {
+    beforeEach(() => {
+      getInvokeMock().mockReset();
+    });
+
+    it("transitions tiles whose bound files are gone to Missing mode", async () => {
+      const persisted = {
+        tree: {
+          direction: "row",
+          first: "editor-1",
+          second: "editor-2",
+          splitPercentage: 50,
+        },
+        tiles: {
+          "editor-1": { mode: "editor", filePath: "/p/exists.md" },
+          "editor-2": { mode: "editor", filePath: "/p/deleted.md" },
+        },
+      };
+      getInvokeMock().mockImplementation(async (cmd: string, args?: any) => {
+        if (cmd === "load_layout") return JSON.stringify(persisted);
+        if (cmd === "file_exists") {
+          return args.path === "/p/exists.md";
+        }
+        return undefined;
+      });
+
+      const restored = await useLayoutStore.getState().loadLayout("/p");
+      expect(restored).toBe(true);
+
+      const tiles = useLayoutStore.getState().tiles;
+      expect(tiles["editor-1"].mode).toBe("editor");
+      expect(tiles["editor-1"].filePath).toBe("/p/exists.md");
+
+      expect(tiles["editor-2"].mode).toBe("missing");
+      expect(tiles["editor-2"].filePath).toBeNull();
+      expect(tiles["editor-2"].missingPath).toBe("/p/deleted.md");
     });
   });
 });

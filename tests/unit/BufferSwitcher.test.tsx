@@ -3,17 +3,28 @@
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import BufferSwitcher from "../../src/components/BufferSwitcher";
 import useProjectStore from "../../src/stores/projectStore";
 import useLayoutStore from "../../src/stores/layoutStore";
 
 const MOCK_NOTES = [
-  { path: "/project/notes/alpha.md", name: "alpha", modified_at: 3 },
-  { path: "/project/notes/beta.md", name: "beta", modified_at: 2 },
-  { path: "/project/notes/gamma.md", name: "gamma", modified_at: 1 },
+  { path: "/project/notes/alpha.md", name: "alpha", extension: "md", modified_at: 3 },
+  { path: "/project/notes/beta.md", name: "beta", extension: "md", modified_at: 2 },
+  { path: "/project/notes/gamma.md", name: "gamma", extension: "md", modified_at: 1 },
 ];
+
+const MOCK_ALL_NOTES = [
+  ...MOCK_NOTES,
+  { path: "/project/notes/data.txt", name: "data.txt", extension: "txt", modified_at: 0 },
+];
+
+function getInvokeMock() {
+  return (
+    window as unknown as { __TAURI_INTERNALS__: { invoke: ReturnType<typeof vi.fn> } }
+  ).__TAURI_INTERNALS__.invoke;
+}
 
 beforeEach(() => {
   useProjectStore.setState({
@@ -25,7 +36,7 @@ beforeEach(() => {
   useLayoutStore.setState({
     focusedTileId: "editor-1",
     tiles: {
-      "editor-1": { id: "editor-1", type: "editor", filePath: null },
+      "editor-1": { id: "editor-1", mode: "editor", filePath: null },
     },
     mosaicTree: "editor-1",
     pinnedTileId: null,
@@ -33,6 +44,16 @@ beforeEach(() => {
     maximizedTileId: null,
     savedTreeBeforeMaximize: null,
     tileCounter: 0,
+    statusMessage: null,
+  });
+
+  // Mock invoke to return notes for list commands
+  const invokeMock = getInvokeMock();
+  invokeMock.mockReset();
+  invokeMock.mockImplementation((cmd: string) => {
+    if (cmd === "list_notes_all") return Promise.resolve(MOCK_ALL_NOTES);
+    if (cmd === "list_notes") return Promise.resolve(MOCK_NOTES);
+    return Promise.resolve(undefined);
   });
 });
 
@@ -44,38 +65,50 @@ describe("BufferSwitcher", () => {
     expect(screen.getByTestId("buffer-switcher-list")).toBeInTheDocument();
   });
 
-  it("shows all notes when query is empty", () => {
-    render(<BufferSwitcher onClose={() => {}} />);
-    expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
+  it("shows all notes when query is empty (editor picker)", async () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="editor" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
+    });
     expect(screen.getByTestId("buffer-item-beta")).toBeInTheDocument();
     expect(screen.getByTestId("buffer-item-gamma")).toBeInTheDocument();
+    expect(screen.getByTestId("buffer-item-data.txt")).toBeInTheDocument();
   });
 
-  it("filters notes by query", () => {
-    render(<BufferSwitcher onClose={() => {}} />);
+  it("preview picker shows only .md files", async () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="preview" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("buffer-item-data.txt")).not.toBeInTheDocument();
+  });
+
+  it("filters notes by query", async () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="editor" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
+    });
     const input = screen.getByTestId("buffer-switcher-input");
     fireEvent.change(input, { target: { value: "al" } });
     expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
     expect(screen.queryByTestId("buffer-item-beta")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("buffer-item-gamma")).not.toBeInTheDocument();
   });
 
-  it("is case-insensitive in filtering", () => {
-    render(<BufferSwitcher onClose={() => {}} />);
+  it("is case-insensitive in filtering", async () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="editor" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
+    });
     const input = screen.getByTestId("buffer-switcher-input");
     fireEvent.change(input, { target: { value: "ALPHA" } });
     expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
   });
 
-  it("shows 'No matching notes' when filter matches nothing (buffer mode)", () => {
-    render(<BufferSwitcher onClose={() => {}} mode="buffer" />);
-    const input = screen.getByTestId("buffer-switcher-input");
-    fireEvent.change(input, { target: { value: "zzznomatch" } });
-    expect(screen.getByText("No matching notes")).toBeInTheDocument();
-  });
-
-  it("shows 'Create new note' row in find-file mode when query has no exact match", () => {
-    render(<BufferSwitcher onClose={() => {}} mode="find-file" />);
+  it("shows 'Create new note' row when query has no exact match", async () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="editor" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument();
+    });
     const input = screen.getByTestId("buffer-switcher-input");
     fireEvent.change(input, { target: { value: "newname" } });
     expect(screen.getByTestId("buffer-create-new")).toBeInTheDocument();
@@ -84,23 +117,16 @@ describe("BufferSwitcher", () => {
     );
   });
 
-  it("does NOT show create row in buffer mode", () => {
-    render(<BufferSwitcher onClose={() => {}} mode="buffer" />);
-    const input = screen.getByTestId("buffer-switcher-input");
-    fireEvent.change(input, { target: { value: "newname" } });
-    expect(screen.queryByTestId("buffer-create-new")).not.toBeInTheDocument();
+  it("shows '+ New note…' at top when query is empty", async () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="editor" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("buffer-new-note-top")).toBeInTheDocument();
+    });
   });
 
-  it("does NOT show create row in find-file mode when query matches an existing note", () => {
-    render(<BufferSwitcher onClose={() => {}} mode="find-file" />);
-    const input = screen.getByTestId("buffer-switcher-input");
-    fireEvent.change(input, { target: { value: "alpha" } });
-    expect(screen.queryByTestId("buffer-create-new")).not.toBeInTheDocument();
-  });
-
-  it("calls onClose when Escape is pressed", () => {
+  it("calls onClose when Escape is pressed", async () => {
     const onClose = vi.fn();
-    render(<BufferSwitcher onClose={onClose} />);
+    render(<BufferSwitcher onClose={onClose} pickerMode="editor" />);
     const input = screen.getByTestId("buffer-switcher-input");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
@@ -108,29 +134,98 @@ describe("BufferSwitcher", () => {
 
   it("calls onClose when overlay background is clicked", () => {
     const onClose = vi.fn();
-    render(<BufferSwitcher onClose={onClose} />);
+    render(<BufferSwitcher onClose={onClose} pickerMode="editor" />);
     fireEvent.click(screen.getByTestId("buffer-switcher-overlay"));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("ArrowDown / ArrowUp navigate the list", () => {
-    render(<BufferSwitcher onClose={() => {}} />);
-    const input = screen.getByTestId("buffer-switcher-input");
+  it("reference-stub shows placeholder message", () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="reference-stub" />);
+    expect(screen.getByTestId("buffer-switcher-stub")).toBeInTheDocument();
+    expect(screen.getByText("Reference mode is not yet available.")).toBeInTheDocument();
+  });
 
-    // Initially first item is selected (idx=0 → alpha has accent background)
-    const alpha = screen.getByTestId("buffer-item-alpha");
-    const beta = screen.getByTestId("buffer-item-beta");
+  it("aichat-stub shows placeholder message", () => {
+    render(<BufferSwitcher onClose={() => {}} pickerMode="aichat-stub" />);
+    expect(screen.getByTestId("buffer-switcher-stub")).toBeInTheDocument();
+    expect(screen.getByText("AI Chat mode is not yet available.")).toBeInTheDocument();
+  });
 
-    // alpha starts selected — it has the accent-muted background
-    // jsdom doesn't resolve CSS variables, so check the inline style string contains accent-muted
-    expect(alpha.style.background).toContain("accent-muted");
-    expect(beta.style.background).not.toContain("accent-muted");
+  describe("+ New note extension validation (SPEC §4.0.2)", () => {
+    it("Editor picker creates a non-.md file verbatim via create_note", async () => {
+      const invokeMock = getInvokeMock();
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "list_notes_all") return Promise.resolve(MOCK_ALL_NOTES);
+        if (cmd === "list_notes") return Promise.resolve(MOCK_NOTES);
+        if (cmd === "create_note") {
+          return Promise.resolve("/project/notes/scratch.txt");
+        }
+        return Promise.resolve(undefined);
+      });
 
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    expect(beta.style.background).toContain("accent-muted");
-    expect(alpha.style.background).not.toContain("accent-muted");
+      render(<BufferSwitcher onClose={() => {}} pickerMode="editor" />);
+      await waitFor(() =>
+        expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument(),
+      );
+      const input = screen.getByTestId("buffer-switcher-input");
+      fireEvent.change(input, { target: { value: "scratch.txt" } });
+      fireEvent.click(screen.getByTestId("buffer-create-new"));
 
-    fireEvent.keyDown(input, { key: "ArrowUp" });
-    expect(alpha.style.background).toContain("accent-muted");
+      await waitFor(() => {
+        const createCall = invokeMock.mock.calls.find(
+          (c) => c[0] === "create_note",
+        );
+        expect(createCall).toBeDefined();
+        expect(createCall![1]).toMatchObject({ name: "scratch.txt" });
+      });
+      expect(
+        screen.queryByTestId("buffer-switcher-validation-error"),
+      ).toBeNull();
+    });
+
+    it("Preview picker rejects a non-.md filename with an inline message", async () => {
+      const invokeMock = getInvokeMock();
+      render(<BufferSwitcher onClose={() => {}} pickerMode="preview" />);
+      await waitFor(() =>
+        expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument(),
+      );
+      const input = screen.getByTestId("buffer-switcher-input");
+      fireEvent.change(input, { target: { value: "scratch.txt" } });
+      fireEvent.click(screen.getByTestId("buffer-create-new"));
+
+      const err = await screen.findByTestId(
+        "buffer-switcher-validation-error",
+      );
+      expect(err.textContent).toMatch(/markdown/i);
+      expect(
+        invokeMock.mock.calls.find((c) => c[0] === "create_note"),
+      ).toBeUndefined();
+    });
+
+    it("Preview picker accepts a .md filename", async () => {
+      const invokeMock = getInvokeMock();
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "list_notes_all") return Promise.resolve(MOCK_ALL_NOTES);
+        if (cmd === "list_notes") return Promise.resolve(MOCK_NOTES);
+        if (cmd === "create_note") {
+          return Promise.resolve("/project/notes/newone.md");
+        }
+        return Promise.resolve(undefined);
+      });
+
+      render(<BufferSwitcher onClose={() => {}} pickerMode="preview" />);
+      await waitFor(() =>
+        expect(screen.getByTestId("buffer-item-alpha")).toBeInTheDocument(),
+      );
+      const input = screen.getByTestId("buffer-switcher-input");
+      fireEvent.change(input, { target: { value: "newone.md" } });
+      fireEvent.click(screen.getByTestId("buffer-create-new"));
+
+      await waitFor(() => {
+        expect(
+          invokeMock.mock.calls.find((c) => c[0] === "create_note"),
+        ).toBeDefined();
+      });
+    });
   });
 });

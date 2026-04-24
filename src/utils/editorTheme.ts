@@ -69,6 +69,23 @@ export const notesAppTheme: Extension = EditorView.theme(
     ".cm-url": {
       color: "#0066cc",
     },
+    // LaTeX / Mermaid distinct token highlighting (ROADMAP §Phase 1)
+    ".cm-math-inline": {
+      color: "#7c3aed",
+      background: "rgba(124, 58, 237, 0.06)",
+      borderRadius: "2px",
+    },
+    ".cm-math-display": {
+      color: "#7c3aed",
+      background: "rgba(124, 58, 237, 0.10)",
+      borderRadius: "2px",
+      fontWeight: "500",
+    },
+    ".cm-mermaid-block": {
+      color: "#0e7490",
+      background: "rgba(14, 116, 144, 0.08)",
+      borderRadius: "2px",
+    },
   },
   { dark: false },
 );

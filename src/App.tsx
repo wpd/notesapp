@@ -2,16 +2,19 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
+import { openFileDialog } from "./utils/dialogs";
 
 import useProjectStore from "./stores/projectStore";
-import useLayoutStore from "./stores/layoutStore";
+import useLayoutStore, { TileMode } from "./stores/layoutStore";
+import useEditorStore from "./stores/editorStore";
 import MosaicLayout from "./components/MosaicLayout";
 import ActivitySidebar from "./components/ActivitySidebar";
-import BufferSwitcher from "./components/BufferSwitcher";
+import BufferSwitcher, { PickerMode } from "./components/BufferSwitcher";
 import RecoveryDialog from "./components/RecoveryDialog";
+import UnsavedChangesDialog from "./components/UnsavedChangesDialog";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 
 // ---------------------------------------------------------------------------
@@ -23,19 +26,31 @@ function ProjectLoader({
 }: {
   onProjectLoaded: () => void;
 }): React.ReactElement {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // If boot() already pre-hydrated an error (env var was set but invalid),
+  // start in the non-loading state so the chooser button is shown immediately
+  // without any IPC round-trips.
+  const preHydratedError = useProjectStore.getState().error;
+  const [loading, setLoading] = useState(!preHydratedError);
+  const [error, setError] = useState<string | null>(preHydratedError);
   const { setProjectDir } = useProjectStore();
 
   useEffect(() => {
+    // If boot() pre-hydrated an error, skip tryAutoLoad entirely — the
+    // on_page_load hook has already run open_project and got the same error.
+    if (preHydratedError) return;
+
     async function tryAutoLoad() {
       try {
-        // Check NOTESAPP_PROJECT_DIR env var
         const envDir = await invoke<string | null>("get_project_dir_env");
         if (envDir) {
-          await setProjectDir(envDir);
-          onProjectLoaded();
-          return;
+          const ok = await setProjectDir(envDir);
+          if (ok) {
+            onProjectLoaded();
+            return;
+          }
+          // Env var pointed at a broken project — surface the reason
+          // and fall through to the chooser per ROADMAP §Phase 1.
+          setError(useProjectStore.getState().error);
         }
       } catch {
         // Fall through to dialog
@@ -43,20 +58,33 @@ function ProjectLoader({
       setLoading(false);
     }
     void tryAutoLoad();
-  }, [setProjectDir, onProjectLoaded]);
+  }, [setProjectDir, onProjectLoaded, preHydratedError]);
 
+  // Run a chooser-pick through the same §6.1.1 resolution as the env var.
+  // If the user picks a directory that classify_project_dir rejects,
+  // surface the reason and reopen the chooser (ROADMAP §Phase 1).
   const handleChooseDir = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const selected = await openDialog({ directory: true, multiple: false });
-      if (!selected) {
-        setLoading(false);
-        return;
+      while (true) {
+        const selected = await openFileDialog({
+          directory: true,
+          multiple: false,
+        });
+        if (!selected) {
+          setLoading(false);
+          return;
+        }
+        const dir = typeof selected === "string" ? selected : selected[0];
+        const ok = await setProjectDir(dir);
+        if (ok) {
+          onProjectLoaded();
+          return;
+        }
+        setError(useProjectStore.getState().error);
+        // Loop: chooser reopens so the user can pick a different directory.
       }
-      const dir = typeof selected === "string" ? selected : selected[0];
-      await setProjectDir(dir);
-      onProjectLoaded();
     } catch (err) {
       setError(String(err));
       setLoading(false);
@@ -143,20 +171,30 @@ interface PreloadedData {
   notes: Array<{ path: string; name: string; modified_at: number }>;
 }
 
-type SwitcherMode = "buffer" | "find-file";
+interface SwitcherState {
+  pickerMode: PickerMode;
+  targetTileId?: string;
+  targetMode?: TileMode;
+}
 
 function AppShell(): React.ReactElement {
-  const [switcherMode, setSwitcherMode] = useState<SwitcherMode | null>(null);
+  const [switcherState, setSwitcherState] = useState<SwitcherState | null>(null);
   const [recoveryPaths, setRecoveryPaths] = useState<string[]>([]);
   const [recoveryDismissed, setRecoveryDismissed] = useState(false);
   const projectDir = useProjectStore((s) => s.projectDir);
-  const { initDefaultLayout, loadLayout } = useLayoutStore();
+  const notes = useProjectStore((s) => s.notes);
+  const statusMessage = useLayoutStore((s) => s.statusMessage);
+  const {
+    initDefaultLayout,
+    loadLayout,
+    setTileMissing,
+    requestCloseTile,
+    collectDirtyBuffers,
+    setPendingDialog,
+  } = useLayoutStore();
+  const watcherStartedRef = useRef(false);
 
-  // Hydrate Zustand from window.__NOTESAPP_PRELOADED__ if it hasn't been set
-  // yet (automation / dev path where NOTESAPP_PROJECT_DIR env var is present).
-  // This effect runs after AppShell is first committed — the ONLY safe site to
-  // call useProjectStore.setState(): no concurrent render is in progress, and
-  // the React fiber tree is fully healthy (not stale / partially detached).
+  // Hydrate Zustand from preloaded data
   useEffect(() => {
     if (useProjectStore.getState().isLoaded) return;
     const data = (
@@ -170,18 +208,13 @@ function AppShell(): React.ReactElement {
         error: null,
       });
     }
-  }, []); // intentionally empty — run once on mount only
+  }, []);
 
-  // Load persisted layout or fall back to default.
-  // A 3-second timeout guards against invoke() hanging under WebKit
-  // automation (where IPC may not resolve after the automation DOM reset).
-  // When projectDir is null (Zustand hydration pending), use default layout
-  // immediately so tiles are visible.
+  // Load persisted layout or init default with first note
   useEffect(() => {
     let active = true;
     async function load() {
       if (!projectDir) {
-        // No project dir yet — use default layout so tiles appear.
         initDefaultLayout();
         return;
       }
@@ -189,24 +222,95 @@ function AppShell(): React.ReactElement {
       try {
         restored = await Promise.race([
           loadLayout(projectDir),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 3000),
+          ),
         ]);
       } catch {
         restored = false;
       }
       if (active && !restored) {
-        initDefaultLayout();
+        // Find the first note to bind to (default layout per SPEC §4.0.1)
+        const firstNote = notes.length > 0 ? notes[0].path : undefined;
+        initDefaultLayout(firstNote);
       }
     }
     void load();
     return () => {
       active = false;
     };
-  }, [projectDir, loadLayout, initDefaultLayout]);
+  }, [projectDir, loadLayout, initDefaultLayout, notes]);
 
-  // Crash-recovery scan: when the project loads, check for `.tmp` autosave
-  // files alongside `.md` notes.  If found, surface a RecoveryDialog so the
-  // user can recover or discard drafts from a previous session.
+  // Start file watcher
+  useEffect(() => {
+    if (!projectDir || watcherStartedRef.current) return;
+    watcherStartedRef.current = true;
+    invoke("start_file_watcher", { projectDir }).catch(() => {
+      // Non-fatal — file watcher is best-effort
+    });
+  }, [projectDir]);
+
+  // Listen for file-change events from the watcher
+  useEffect(() => {
+    const unlisten = listen<{ kind: string; path: string }>(
+      "file-change",
+      (event) => {
+        if (event.payload.kind === "delete") {
+          const deletedPath = event.payload.path;
+          const { tiles } = useLayoutStore.getState();
+          for (const [tileId, tile] of Object.entries(tiles)) {
+            if (tile.filePath === deletedPath && tile.mode !== "missing") {
+              setTileMissing(tileId, deletedPath);
+            }
+          }
+        }
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [setTileMissing]);
+
+  // SPEC.md §4.0.1 — consolidated quit dialog. Intercept the native window
+  // close request. If any buffer is dirty, show the consolidated dialog;
+  // otherwise allow the window to close.
+  useEffect(() => {
+    let active = true;
+    let unlistenFn: (() => void) | null = null;
+    import("@tauri-apps/api/window")
+      .then(async ({ getCurrentWindow }) => {
+        if (!active) return;
+        const win = getCurrentWindow();
+        const unlisten = await win.onCloseRequested((event) => {
+          const dirty = collectDirtyBuffers(
+            useEditorStore.getState().dirtyStates,
+          );
+          if (dirty.length === 0) return;
+          event.preventDefault();
+          setPendingDialog({
+            kind: "quit",
+            dirtyBuffers: dirty,
+            onComplete: () => {
+              void win.destroy();
+            },
+          });
+        });
+        if (active) {
+          unlistenFn = unlisten;
+        } else {
+          unlisten();
+        }
+      })
+      .catch(() => {
+        // Non-Tauri environment (tests) — no-op
+      });
+    return () => {
+      active = false;
+      unlistenFn?.();
+    };
+  }, [collectDirtyBuffers, setPendingDialog]);
+
+  // Crash recovery scan
   useEffect(() => {
     if (!projectDir || recoveryDismissed) return;
     let active = true;
@@ -216,9 +320,7 @@ function AppShell(): React.ReactElement {
           setRecoveryPaths(paths);
         }
       })
-      .catch(() => {
-        // Non-fatal — recovery is best-effort.
-      });
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -229,17 +331,188 @@ function AppShell(): React.ReactElement {
     setRecoveryDismissed(true);
   }, []);
 
-  const handleOpenBufferSwitcher = useCallback(() => {
-    setSwitcherMode("buffer");
-  }, []);
+  // Buffer switcher handlers
+  const handleOpenBufferSwitcher = useCallback(
+    (tileId: string, pickerMode: string) => {
+      setSwitcherState({
+        pickerMode: pickerMode as PickerMode,
+        targetTileId: tileId,
+      });
+    },
+    [],
+  );
 
   const handleOpenFindFile = useCallback(() => {
-    setSwitcherMode("find-file");
+    const focused = useLayoutStore.getState().focusedTileId;
+    setSwitcherState({
+      pickerMode: "find-file",
+      targetTileId: focused ?? undefined,
+    });
   }, []);
+
+  const handleModeSwitch = useCallback(
+    (tileId: string, mode: TileMode) => {
+      if (mode === "reference") {
+        setSwitcherState({
+          pickerMode: "reference-stub",
+          targetTileId: tileId,
+          targetMode: mode,
+        });
+        return;
+      }
+      if (mode === "aichat") {
+        setSwitcherState({
+          pickerMode: "aichat-stub",
+          targetTileId: tileId,
+          targetMode: mode,
+        });
+        return;
+      }
+      // Editor or Preview mode switch — open the appropriate picker
+      const pickerMode: PickerMode =
+        mode === "preview" ? "preview" : "editor";
+      setSwitcherState({
+        pickerMode,
+        targetTileId: tileId,
+        targetMode: mode,
+      });
+    },
+    [],
+  );
+
+  const handleSwitcherClose = useCallback(() => {
+    setSwitcherState(null);
+  }, []);
+
+  // Tile action handlers for MosaicLayout
+  const handleOpenPicker = useCallback(
+    (tileId: string) => {
+      const tile = useLayoutStore.getState().tiles[tileId];
+      if (!tile) return;
+      const pickerMode: PickerMode =
+        tile.mode === "preview"
+          ? "preview"
+          : tile.mode === "reference"
+            ? "reference-stub"
+            : tile.mode === "aichat"
+              ? "aichat-stub"
+              : "editor";
+      setSwitcherState({ pickerMode, targetTileId: tileId });
+    },
+    [],
+  );
+
+  const handleLocate = useCallback(
+    async (tileId: string) => {
+      const tile = useLayoutStore.getState().tiles[tileId];
+      if (!tile?.missingPath) return;
+      // Derive directory scope from the missing path
+      let defaultDir = projectDir ?? undefined;
+      if (tile.missingPath.includes("/notes/")) {
+        defaultDir = projectDir ? `${projectDir}/notes` : undefined;
+      } else if (tile.missingPath.includes("/references/")) {
+        defaultDir = projectDir ? `${projectDir}/references` : undefined;
+      } else if (tile.missingPath.includes("/ai-context/")) {
+        defaultDir = projectDir
+          ? `${projectDir}/.notesapp/ai-context`
+          : undefined;
+      }
+      try {
+        const selected = await openFileDialog({
+          directory: false,
+          multiple: false,
+          defaultPath: defaultDir,
+        });
+        if (!selected) return;
+        const filePath =
+          typeof selected === "string" ? selected : selected[0];
+        // Determine the new mode based on the file location
+        let newMode: TileMode = "editor";
+        if (filePath.includes("/references/")) {
+          newMode = "reference";
+        } else if (filePath.includes("/ai-context/")) {
+          newMode = "aichat";
+        }
+        useLayoutStore.getState().setTileMode(tileId, newMode);
+        useLayoutStore.getState().setTileFile(tileId, filePath);
+        // Load Y.Doc
+        const ydoc = useEditorStore.getState().getOrCreateYDoc(filePath);
+        const ytext = ydoc.getText("content");
+        if (ytext.length === 0) {
+          try {
+            const content = await invoke<string>("read_note", {
+              path: filePath,
+            });
+            ydoc.transact(() => {
+              if (ytext.length === 0) ytext.insert(0, content);
+            });
+          } catch {
+            // File may be unreadable
+          }
+        }
+      } catch {
+        // Dialog cancelled or error
+      }
+    },
+    [projectDir],
+  );
+
+  const handleOpenDifferent = useCallback(
+    (tileId: string) => {
+      // SPEC §5.5 — Continue/Cancel confirm if the missing tile has
+      // unsaved in-memory edits. Save is not offered (file is gone).
+      const tile = useLayoutStore.getState().tiles[tileId];
+      const isDirty = useEditorStore.getState().isDirty(tileId);
+      const openPicker = () => {
+        setSwitcherState({
+          pickerMode: "editor",
+          targetTileId: tileId,
+          targetMode: "editor",
+        });
+      };
+      if (tile?.mode === "missing" && tile.missingPath && isDirty) {
+        setPendingDialog({
+          kind: "missing-recovery",
+          tileId,
+          missingPath: tile.missingPath,
+          action: "open-different",
+          onContinue: openPicker,
+        });
+        return;
+      }
+      openPicker();
+    },
+    [setPendingDialog],
+  );
+
+  const handleCloseTile = useCallback(
+    (tileId: string) => {
+      // SPEC §5.5 — Continue/Cancel confirm on Missing-tile close with
+      // unsaved edits. For non-Missing tiles, requestCloseTile uses the
+      // regular Save/Discard/Cancel flow.
+      const tile = useLayoutStore.getState().tiles[tileId];
+      const isDirty = useEditorStore.getState().isDirty(tileId);
+      if (tile?.mode === "missing" && tile.missingPath && isDirty) {
+        setPendingDialog({
+          kind: "missing-recovery",
+          tileId,
+          missingPath: tile.missingPath,
+          action: "close",
+          onContinue: () => {
+            useLayoutStore.getState().closeTile(tileId);
+          },
+        });
+        return;
+      }
+      requestCloseTile(tileId);
+    },
+    [requestCloseTile, setPendingDialog],
+  );
 
   useKeyboardShortcuts({
     onOpenBufferSwitcher: handleOpenBufferSwitcher,
     onOpenFindFile: handleOpenFindFile,
+    onModeSwitch: handleModeSwitch,
   });
 
   return (
@@ -249,32 +522,71 @@ function AppShell(): React.ReactElement {
         width: "100vw",
         height: "100vh",
         display: "flex",
-        flexDirection: "row",
+        flexDirection: "column",
         overflow: "hidden",
         background: "var(--color-bg-primary)",
       }}
     >
-      {/* Activity sidebar */}
-      <ActivitySidebar />
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "row",
+          overflow: "hidden",
+        }}
+      >
+        {/* Activity sidebar */}
+        <ActivitySidebar />
 
-      {/* Tiling layout */}
-      <MosaicLayout />
+        {/* Tiling layout */}
+        <MosaicLayout
+          onOpenPicker={handleOpenPicker}
+          onLocate={handleLocate}
+          onOpenDifferent={handleOpenDifferent}
+          onCloseTile={handleCloseTile}
+        />
+      </div>
 
-      {/* Buffer switcher / find-file overlay */}
-      {switcherMode && (
+      {/* Status bar */}
+      {statusMessage && (
+        <div
+          data-testid="status-bar"
+          style={{
+            height: "24px",
+            padding: "0 12px",
+            background: "var(--color-surface-dark)",
+            color: "rgba(255,255,255,0.6)",
+            fontFamily: "var(--font-prose)",
+            fontSize: "12px",
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
+          {statusMessage}
+        </div>
+      )}
+
+      {/* Buffer switcher overlay */}
+      {switcherState && (
         <BufferSwitcher
-          mode={switcherMode}
-          onClose={() => setSwitcherMode(null)}
+          pickerMode={switcherState.pickerMode}
+          targetTileId={switcherState.targetTileId}
+          targetMode={switcherState.targetMode}
+          onClose={handleSwitcherClose}
         />
       )}
 
-      {/* Crash recovery dialog — shown once on project load if .tmp files exist */}
+      {/* Crash recovery dialog */}
       {recoveryPaths.length > 0 && (
         <RecoveryDialog
           recoveries={recoveryPaths}
           onClose={handleCloseRecovery}
         />
       )}
+
+      {/* Unsaved-changes / consolidated-quit dialog (SPEC §4.0.1) */}
+      <UnsavedChangesDialog />
     </div>
   );
 }
@@ -284,12 +596,6 @@ function AppShell(): React.ReactElement {
 // ---------------------------------------------------------------------------
 
 export default function App(): React.ReactElement {
-  // Lazy initializer: check window.__NOTESAPP_PRELOADED__ synchronously so
-  // that when main.tsx creates a fresh React root after the WebKit automation
-  // DOM reset, App skips the ProjectLoader entirely and renders AppShell
-  // directly.  Rust sets __NOTESAPP_PRELOADED__ in on_page_load(Finished)
-  // before the DOM reset fires, so the data is always available here in the
-  // automation path.
   const [projectLoaded, setProjectLoaded] = useState(() => {
     const data = (
       window as Window & { __NOTESAPP_PRELOADED__?: PreloadedData }
@@ -297,13 +603,6 @@ export default function App(): React.ReactElement {
     return !!data?.dir;
   });
 
-  // Fallback poller for the normal launch path where on_page_load fires after
-  // the initial flushSync render (NOTESAPP_PROJECT_DIR is set but the preloaded
-  // data arrives slightly later than the first render).
-  //
-  // IMPORTANT — only call React's own setState here, never
-  // useProjectStore.setState().  Zustand is hydrated safely from AppShell's
-  // useEffect after the render is committed.
   useEffect(() => {
     if (projectLoaded) return;
     const id = setInterval(() => {
@@ -318,8 +617,6 @@ export default function App(): React.ReactElement {
     return () => clearInterval(id);
   }, [projectLoaded]);
 
-  // Manual project open path: ProjectLoader calls this after setProjectDir
-  // succeeds (which already sets Zustand isLoaded=true).
   const handleProjectLoaded = useCallback(() => {
     setProjectLoaded(true);
   }, []);

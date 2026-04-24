@@ -7,57 +7,44 @@ import useEditorStore from "../stores/editorStore";
 import useLayoutStore from "../stores/layoutStore";
 import { renderMarkdown } from "../utils/markdownPipeline";
 import { renderMermaidBlocks } from "../utils/mermaidRenderer";
+import { invoke } from "@tauri-apps/api/core";
 
 interface PreviewPaneProps {
   tileId: string;
   filePath: string | null;
 }
 
-/** Find the "active" file path to render: pinned editor → focused editor → first editor */
-function useActiveFilePath(tileId: string): string | null {
-  return useLayoutStore((state) => {
-    const { pinnedTileId, tiles, focusedTileId } = state;
-
-    // Prefer pinned
-    if (pinnedTileId) {
-      const pinned = tiles[pinnedTileId];
-      if (pinned?.type === "editor" && pinned.filePath) {
-        return pinned.filePath;
-      }
-    }
-
-    // Then focused editor tile
-    if (focusedTileId && focusedTileId !== tileId) {
-      const focused = tiles[focusedTileId];
-      if (focused?.type === "editor" && focused.filePath) {
-        return focused.filePath;
-      }
-    }
-
-    // The tile's own filePath
-    const own = tiles[tileId];
-    if (own?.filePath) return own.filePath;
-
-    // First editor tile with a file
-    for (const tile of Object.values(tiles)) {
-      if (tile.type === "editor" && tile.filePath) return tile.filePath;
-    }
-
-    return null;
-  });
-}
-
 export default function PreviewPane({
   tileId,
-  filePath: _filePath,
+  filePath,
 }: PreviewPaneProps): React.ReactElement {
-  const activeFilePath = useActiveFilePath(tileId);
-  const { ydocs } = useEditorStore();
+  const { ydocs, getOrCreateYDoc } = useEditorStore();
   const { focusTile } = useLayoutStore();
 
   const [html, setHtml] = useState<string>("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Load file into Y.Doc if needed (same as EditorPane — shared Y.Doc)
+  useEffect(() => {
+    if (!filePath) return;
+    const ydoc = getOrCreateYDoc(filePath);
+    const ytext = ydoc.getText("content");
+
+    if (ytext.length === 0) {
+      invoke<string>("read_note", { path: filePath })
+        .then((content) => {
+          if (ytext.length === 0) {
+            ydoc.transact(() => {
+              ytext.insert(0, content);
+            });
+          }
+        })
+        .catch(() => {
+          // File may be missing — will show empty
+        });
+    }
+  }, [filePath, getOrCreateYDoc]);
 
   const renderContent = useCallback((text: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -67,22 +54,20 @@ export default function PreviewPane({
     }, 150);
   }, []);
 
-  // Subscribe to Y.Text changes for the active file
+  // Subscribe to Y.Text changes for the bound file
   useEffect(() => {
-    if (!activeFilePath) {
+    if (!filePath) {
       setHtml("");
       return;
     }
 
-    const ydoc = ydocs[activeFilePath];
+    const ydoc = ydocs[filePath];
     if (!ydoc) {
       setHtml("");
       return;
     }
 
     const ytext = ydoc.getText("content");
-
-    // Initial render
     renderContent(ytext.toString());
 
     const onChange = () => {
@@ -93,32 +78,27 @@ export default function PreviewPane({
     return () => {
       ytext.unobserve(onChange);
     };
-  }, [activeFilePath, ydocs, renderContent]);
+  }, [filePath, ydocs, renderContent]);
 
-  // Also re-render if ydocs changes (new Y.Doc loaded)
+  // Re-render if ydocs map changes (new Y.Doc loaded)
   useEffect(() => {
-    if (!activeFilePath) return;
-    const ydoc = ydocs[activeFilePath];
+    if (!filePath) return;
+    const ydoc = ydocs[filePath];
     if (!ydoc) return;
     const ytext = ydoc.getText("content");
     renderContent(ytext.toString());
-  }, [ydocs, activeFilePath, renderContent]);
+  }, [ydocs, filePath, renderContent]);
 
-  // After React commits the new HTML, walk the DOM and render any Mermaid
-  // code blocks as SVG diagrams.  A parse failure is rendered inline as
-  // `[Mermaid parse error: …]` — never crash the pane.
+  // After React commits the new HTML, render Mermaid code blocks as SVG.
   useEffect(() => {
     if (!contentRef.current || !html) return;
     const el = contentRef.current;
     void renderMermaidBlocks(el);
   }, [html]);
 
-  // Best-effort scroll-sync: when the editor caret moves, scroll the preview
-  // to the element whose source line is closest (but not past) the caret.
-  // Uses `data-source-line` attributes attached by the rehypeAttachSourceLines
-  // pipeline plugin.
+  // Best-effort scroll-sync with Editor cursor
   const cursorLine = useEditorStore((s) =>
-    activeFilePath ? s.cursorLines[activeFilePath] : undefined,
+    filePath ? s.cursorLines[filePath] : undefined,
   );
   useEffect(() => {
     if (!contentRef.current || cursorLine == null) return;
@@ -157,7 +137,7 @@ export default function PreviewPane({
         cursor: "default",
       }}
     >
-      {activeFilePath ? (
+      {filePath ? (
         <div
           ref={contentRef}
           data-testid={`preview-content-${tileId}`}
@@ -174,9 +154,9 @@ export default function PreviewPane({
             marginTop: "3rem",
           }}
         >
-          <p>No note open in the editor.</p>
+          <p>No note bound to this tile.</p>
           <p style={{ fontSize: "12px", marginTop: "0.5rem" }}>
-            Open a file with <kbd>C-x b</kbd> or <kbd>C-x C-f</kbd>
+            Open a file with <kbd>C-x b</kbd> or the ▾ dropdown
           </p>
         </div>
       )}

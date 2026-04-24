@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use crate::AppError;
 
-/// Read the content of a markdown note file.
+/// Read the content of a note file.
 #[tauri::command]
 pub fn read_note(path: String) -> Result<String, AppError> {
     let p = PathBuf::from(&path);
@@ -19,7 +19,7 @@ pub fn read_note(path: String) -> Result<String, AppError> {
     Ok(content)
 }
 
-/// Write (overwrite) a markdown note file.
+/// Write (overwrite) a note file.
 #[tauri::command]
 pub fn write_note(path: String, content: String) -> Result<(), AppError> {
     let p = PathBuf::from(&path);
@@ -33,7 +33,7 @@ pub fn write_note(path: String, content: String) -> Result<(), AppError> {
 }
 
 /// Write content to a `.tmp` autosave file alongside the note.
-/// The `.tmp` path is derived by replacing `.md` with `.tmp`.
+/// The `.tmp` path is derived by replacing the extension with `.tmp`.
 #[tauri::command]
 pub fn autosave_note(path: String, content: String) -> Result<(), AppError> {
     let md_path = PathBuf::from(&path);
@@ -53,18 +53,32 @@ pub fn delete_tmp(path: String) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Create a new note file with an empty body and return its path.
+/// Return whether the given filesystem path refers to an existing regular file.
+/// Used by the frontend on layout restore to transition bindings whose files
+/// have been deleted to `Missing` mode (SPEC.md §5.5).
+#[tauri::command]
+pub fn file_exists(path: String) -> bool {
+    PathBuf::from(&path).is_file()
+}
+
+/// Create a new note file and return its path.
+///
+/// If `name` has no extension, `.md` is appended automatically (SPEC.md §6.2).
+/// If `name` already has an extension, it is used verbatim.
+/// `.md` files are created with standard front-matter; other text files are empty.
 #[tauri::command]
 pub fn create_note(project_dir: String, name: String) -> Result<String, AppError> {
     let notes_dir = PathBuf::from(&project_dir).join("notes");
     if !notes_dir.exists() {
         std::fs::create_dir_all(&notes_dir)?;
     }
-    let filename = if name.ends_with(".md") {
-        name
+
+    let filename = if name.contains('.') {
+        name.clone()
     } else {
         format!("{}.md", name)
     };
+
     let note_path = notes_dir.join(&filename);
     if note_path.exists() {
         return Err(AppError::Project(format!(
@@ -72,7 +86,28 @@ pub fn create_note(project_dir: String, name: String) -> Result<String, AppError
             filename
         )));
     }
-    std::fs::write(&note_path, "")?;
+
+    let ext = note_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if ext == "md" {
+        let title = note_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("untitled");
+        let now = crate::fs::iso_now_public();
+        let content = format!(
+            "---\ntitle: \"{}\"\ncreated: {}\nmodified: {}\ntags: []\n---\n\n",
+            title, now, now,
+        );
+        std::fs::write(&note_path, content)?;
+    } else {
+        std::fs::write(&note_path, "")?;
+    }
+
     note_path
         .to_str()
         .map(|s| s.to_string())
@@ -104,7 +139,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let md_path = tmp.path().join("note.md");
         let tmp_path = tmp.path().join("note.tmp");
-        std::fs::write(&md_path, "").unwrap(); // create the .md file
+        std::fs::write(&md_path, "").unwrap();
         autosave_note(md_path.to_string_lossy().to_string(), "draft".to_string()).unwrap();
         let content = std::fs::read_to_string(&tmp_path).unwrap();
         assert_eq!(content, "draft");
@@ -122,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn create_note_creates_file() {
+    fn create_note_md_has_front_matter() {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
         let path_str = create_note(
@@ -130,7 +165,50 @@ mod tests {
             "my-note".to_string(),
         )
         .unwrap();
-        assert!(PathBuf::from(&path_str).exists());
+        let content = std::fs::read_to_string(&path_str).unwrap();
         assert!(path_str.ends_with("my-note.md"));
+        assert!(content.starts_with("---\n"));
+        assert!(content.contains("title: \"my-note\""));
+    }
+
+    #[test]
+    fn create_note_txt_is_empty() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
+        let path_str = create_note(
+            tmp.path().to_string_lossy().to_string(),
+            "data.txt".to_string(),
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(&path_str).unwrap();
+        assert!(path_str.ends_with("data.txt"));
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn file_exists_detects_file() {
+        let tmp = TempDir::new().unwrap();
+        let p = tmp.path().join("note.md");
+        assert!(!file_exists(p.to_string_lossy().to_string()));
+        std::fs::write(&p, "").unwrap();
+        assert!(file_exists(p.to_string_lossy().to_string()));
+        // A directory should not count as a file
+        assert!(!file_exists(tmp.path().to_string_lossy().to_string()));
+    }
+
+    #[test]
+    fn create_note_rejects_duplicate() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
+        create_note(
+            tmp.path().to_string_lossy().to_string(),
+            "dup".to_string(),
+        )
+        .unwrap();
+        let result = create_note(
+            tmp.path().to_string_lossy().to_string(),
+            "dup".to_string(),
+        );
+        assert!(result.is_err());
     }
 }

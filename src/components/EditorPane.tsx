@@ -21,13 +21,14 @@ import useEditorStore from "../stores/editorStore";
 import useLayoutStore from "../stores/layoutStore";
 import useProjectStore from "../stores/projectStore";
 import { notesAppTheme } from "../utils/editorTheme";
+import { spellcheckSuppression } from "../utils/spellcheckSuppression";
+import { mathMermaidHighlight } from "../utils/mathMermaidHighlight";
 
 interface EditorPaneProps {
   tileId: string;
   filePath: string | null;
 }
 
-// Compartment for word-wrap — allows dynamic reconfigure without destroying the view
 const wordWrapCompartment = new Compartment();
 
 export default function EditorPane({
@@ -38,24 +39,18 @@ export default function EditorPane({
   const viewRef = useRef<EditorView | null>(null);
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
-  const [wordWrap, setWordWrap] = useState(true);
-  const [fileMissing, setFileMissing] = useState(false);
 
   const { getOrCreateYDoc, setDirty, startAutosave, stopAutosave, setCursorLine } =
     useEditorStore();
-  const { focusTile } = useLayoutStore();
+  const { focusTile, setTileMissing } = useLayoutStore();
+  const wordWrap = useLayoutStore((s) => s.wordWrap[tileId] ?? true);
 
   // Load file content into the Y.Doc when filePath changes.
-  // If `read_note` rejects, treat the file as missing on disk and render the
-  // ⚠ File not found card — this typically indicates a restored layout that
-  // references a file the user has since deleted.
   useEffect(() => {
-    setFileMissing(false);
     if (!filePath) return;
     const ydoc = getOrCreateYDoc(filePath);
     const ytext = ydoc.getText("content");
 
-    // Only load from disk if Y.Doc is empty (not already populated from another tile)
     if (ytext.length === 0) {
       invoke<string>("read_note", { path: filePath })
         .then((content) => {
@@ -66,16 +61,15 @@ export default function EditorPane({
           }
         })
         .catch(() => {
-          setFileMissing(true);
+          setTileMissing(tileId, filePath);
         });
     }
-  }, [filePath, getOrCreateYDoc]);
+  }, [filePath, getOrCreateYDoc, tileId, setTileMissing]);
 
-  // Build / rebuild the CodeMirror view when filePath or tileId changes
+  // Build / rebuild the CodeMirror view
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Destroy previous view
     if (viewRef.current) {
       viewRef.current.destroy();
       viewRef.current = null;
@@ -84,18 +78,12 @@ export default function EditorPane({
     const ydoc = filePath ? getOrCreateYDoc(filePath) : null;
     const ytext = ydoc?.getText("content") ?? null;
 
-    // Word/char counter update listener
     const updateCounts = (text: string) => {
       setCharCount(text.length);
       setWordCount(text.trim() === "" ? 0 : text.trim().split(/\s+/).length);
     };
 
     const extensions = [
-      // emacs() must come before the default keymap so its bindings win.
-      // It registers C-f/b/n/p, M-f/b, C-a/e, C-k, C-y, C-space, C-w, M-w,
-      // C-/ (undo), C-g, M-<, M->, incremental search, query-replace, and
-      // the kill-ring.  C-x prefix chords are intercepted at the document
-      // level by useKeyboardShortcuts before they reach CodeMirror.
       emacs(),
       history(),
       lineNumbers(),
@@ -104,10 +92,9 @@ export default function EditorPane({
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       notesAppTheme,
       wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
-      // Enable the webview's native spellcheck for prose.  Code blocks and
-      // inline code are suppressed via the `.cm-line` CSS rule that disables
-      // spellcheck within `.tok-monospace` / code spans (see editorTheme).
       EditorView.contentAttributes.of({ spellcheck: "true" }),
+      spellcheckSuppression,
+      mathMermaidHighlight,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           setDirty(tileId, true);
@@ -127,7 +114,6 @@ export default function EditorPane({
       }),
     ];
 
-    // Add Yjs collaboration (awareness=null → local only, no network sync for Phase 1)
     if (ytext) {
       extensions.push(yCollab(ytext, null));
     }
@@ -145,7 +131,6 @@ export default function EditorPane({
     viewRef.current = view;
     updateCounts(view.state.doc.toString());
 
-    // Start autosave
     if (filePath) {
       startAutosave(tileId, filePath);
     }
@@ -155,11 +140,9 @@ export default function EditorPane({
       view.destroy();
       viewRef.current = null;
     };
-    // wordWrap is intentionally excluded — handled by a separate effect below
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath, tileId]);
 
-  // Dynamically update word wrap without destroying the view
   useEffect(() => {
     if (!viewRef.current) return;
     viewRef.current.dispatch({
@@ -169,11 +152,8 @@ export default function EditorPane({
     });
   }, [wordWrap]);
 
-  const isPinned = useLayoutStore((s) => s.pinnedTileId) === tileId;
-
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // C-x C-s also handled here for immediate response when editor is focused
       if (e.ctrlKey && e.key === "s" && filePath) {
         e.preventDefault();
         const editorState = useEditorStore.getState();
@@ -199,25 +179,6 @@ export default function EditorPane({
       }}
       onKeyDown={handleKeyDown}
     >
-      {fileMissing && filePath && (
-        <div
-          data-testid={`file-not-found-${tileId}`}
-          style={{
-            padding: "0.75rem 1rem",
-            background: "rgba(217,119,6,0.08)",
-            color: "var(--color-warning)",
-            borderBottom: "1px solid var(--color-border)",
-            fontFamily: "var(--font-prose)",
-            fontSize: "13px",
-            flexShrink: 0,
-          }}
-        >
-          <span aria-hidden="true">⚠ </span>
-          File not found on disk:{" "}
-          <code style={{ fontFamily: "var(--font-editor)" }}>{filePath}</code>
-        </div>
-      )}
-
       {/* Editor area */}
       <div
         ref={containerRef}
@@ -230,7 +191,7 @@ export default function EditorPane({
         }}
       />
 
-      {/* Status bar */}
+      {/* Status bar — live word/character count */}
       <div
         data-testid={`editor-status-${tileId}`}
         style={{
@@ -242,43 +203,13 @@ export default function EditorPane({
           fontSize: "11px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
           flexShrink: 0,
         }}
       >
         <span>
           {wordCount} words · {charCount} chars
         </span>
-        <span style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          {isPinned && (
-            <span
-              data-testid={`pinned-indicator-${tileId}`}
-              style={{ color: "var(--color-accent)" }}
-              title="Pinned — Insert into Note target"
-            >
-              📌
-            </span>
-          )}
-          <button
-            data-testid={`word-wrap-toggle-${tileId}`}
-            onClick={() => setWordWrap((w) => !w)}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: wordWrap
-                ? "var(--color-accent)"
-                : "rgba(255,255,255,0.4)",
-              cursor: "pointer",
-              fontSize: "10px",
-              padding: "0 2px",
-            }}
-            title={wordWrap ? "Disable word wrap" : "Enable word wrap"}
-          >
-            ⏎
-          </button>
-        </span>
       </div>
     </div>
   );
 }
-

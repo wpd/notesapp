@@ -7,13 +7,17 @@ import ReactDOM from "react-dom/client";
 import { flushSync } from "react-dom";
 import App from "./App";
 import useProjectStore from "./stores/projectStore";
+import useLayoutStore from "./stores/layoutStore";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import "katex/dist/katex.min.css";
 
 interface PreloadedData {
-  dir: string;
-  notes: Array<{ path: string; name: string; modified_at: number }>;
+  /** Set on success; null on error (env var pointed at an invalid path). */
+  dir: string | null;
+  notes?: Array<{ path: string; name: string; modified_at: number }>;
+  /** Set when dir is null — the reason open_project rejected the path. */
+  error?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,14 +56,25 @@ function boot() {
 
   // Pre-hydrate Zustand before creating the React root.  No React fiber tree
   // exists at this point, so setState() is a pure mutation with no side
-  // effects.  With isLoaded=true already set, AppShell's hydration useEffect
-  // bails immediately and never calls setState() during passive effects.
+  // effects.
   if (preloaded?.dir) {
+    // Success path (cases B/C/D): pre-hydrate with isLoaded=true so AppShell
+    // renders immediately without any IPC round-trips.
     useProjectStore.setState({
       projectDir: preloaded.dir,
       notes: preloaded.notes ?? [],
       isLoaded: true,
       error: null,
+    });
+  } else if (preloaded) {
+    // Error path (cases E/F/G/H/I): env var was set but open_project rejected
+    // the path.  Pre-hydrate the error so ProjectLoader skips tryAutoLoad()
+    // and shows the chooser immediately.
+    useProjectStore.setState({
+      projectDir: null,
+      notes: [],
+      isLoaded: false,
+      error: preloaded.error ?? "Unable to open project directory",
     });
   }
 
@@ -89,6 +104,13 @@ function boot() {
 
 // Expose boot() globally so wdio.conf.ts can call it via browser.execute().
 (window as Window & { __notesapp_boot__?: () => void }).__notesapp_boot__ = boot;
+
+// Expose store getters for E2E test introspection (read-only by convention).
+(
+  window as Window & {
+    __notesapp_layout__?: () => ReturnType<typeof useLayoutStore.getState>;
+  }
+).__notesapp_layout__ = () => useLayoutStore.getState();
 
 // ---------------------------------------------------------------------------
 // Initial render (non-automation normal path)
