@@ -83,55 +83,55 @@ deviations from the spec:
 - [x] `cargo fmt` and `cargo clippy` pass cleanly
 
 #### Project Loading and `NOTESAPP_PROJECT_DIR` Resolution
-- [ ] Implement the full SPEC.md §6.1.1 resolution matrix (cases A–I)
-- [ ] Cases B, C, D → open or scaffold the directory; scaffolding
+- [x] Implement the full SPEC.md §6.1.1 resolution matrix (cases A–I)
+- [x] Cases B, C, D → open or scaffold the directory; scaffolding
       creates `.notesapp/project.toml`, `notes/`, `references/`,
       `attachments/`, and `notes/untitled.md` with standard front-matter
-- [ ] Cases E, F, G, H, I → emit the Phase 1 `stderr` message (see
+- [x] Cases E, F, G, H, I → emit the Phase 1 `stderr` message (see
       substitution above) and present the directory chooser
-- [ ] Case A (env var unset) → present the directory chooser
-- [ ] Chooser result is processed through the same §6.1.1 resolution
+- [x] Case A (env var unset) → present the directory chooser
+- [x] Chooser result is processed through the same §6.1.1 resolution
       (a user who picks a broken existing project gets the stderr
       message and the chooser reopens)
-- [ ] Reads all `.md` files and any other text files from `notes/` and
+- [x] Reads all `.md` files and any other text files from `notes/` and
       exposes them to the frontend via Tauri command (the Editor picker
       lists all text files per SPEC.md §4.0.2; the Preview picker lists
       only `.md` files)
-- [ ] Rust file watcher (`notify` crate, debounced) watching `notes/`,
+- [x] Rust file watcher (`notify` crate, debounced) watching `notes/`,
       `references/`, and `.notesapp/ai-context/`, notifying the frontend
       on deletions and renames (required for mid-session `Missing` mode
       transitions per SPEC.md §5.5)
 
 #### Tiling Layout (react-mosaic)
-- [ ] `MosaicWindow` wrapper component with themed title bar
-- [ ] Title bar shows: mode indicator, buffer name with `▾` dropdown,
+- [x] `MosaicWindow` wrapper component with themed title bar
+- [x] Title bar shows: mode indicator, buffer name with `▾` dropdown,
       split-H button, split-V button, maximize button, close button
-- [ ] Mode indicator is a **toggle between Editor and Preview on
+- [x] Mode indicator is a **toggle between Editor and Preview on
       Editor/Preview tiles only** (SPEC.md §4.0.1). On Reference, AI
       Chat, and Missing tiles it is a plain label. The toggle is
       disabled (greyed out) when the bound file is not a `.md` file.
-- [ ] Pin icon on Editor tiles only; `C-x p` toggles pin; only one
+- [x] Pin icon on Editor tiles only; `C-x p` toggles pin; only one
       tile pinned at a time
-- [ ] Default layout on first open: single Editor tile + single
+- [x] Default layout on first open: single Editor tile + single
       Preview tile, **both bound to the same first note** per SPEC.md
       §4.0.1 "Initial mode and binding at tile creation"
-- [ ] Split inherits parent tile's mode and bound buffer (SPEC.md
+- [x] Split inherits parent tile's mode and bound buffer (SPEC.md
       §4.0.1 / §4.0.3)
-- [ ] Layout persisted to `.notesapp/layout.json` on every structural
+- [x] Layout persisted to `.notesapp/layout.json` on every structural
       change (split, close, move, mode change, buffer change, resize)
-- [ ] Layout restored on next open; tiles whose bound buffers cannot
+- [x] Layout restored on next open; tiles whose bound buffers cannot
       be resolved open in `Missing` mode (SPEC.md §5.5)
-- [ ] `C-x o` cycles focus through tiles
-- [ ] `C-x h` / `C-x v` splits current tile
-- [ ] `C-x 0` closes current tile
-- [ ] `C-x z` maximizes / restores current tile
-- [ ] `C-x n n` / `C-x n p` / `C-x n r` / `C-x n c` mode-switch
+- [x] `C-x o` cycles focus through tiles
+- [x] `C-x h` / `C-x v` splits current tile
+- [x] `C-x 0` closes current tile
+- [x] `C-x z` maximizes / restores current tile
+- [x] `C-x n n` / `C-x n p` / `C-x n r` / `C-x n c` mode-switch
       shortcuts per SPEC.md §4.0.1 (in Phase 1, `C-x n r` and
       `C-x n c` open a stub picker since Reference and AI Chat tiles
       are implemented in Phase 3 and Phase 4 — see below)
-- [ ] `C-x n p` is a no-op with a status-bar message when the bound
+- [x] `C-x n p` is a no-op with a status-bar message when the bound
       file is not a `.md` file (SPEC.md §4.0.1)
-- [ ] `Cmd+B` / `Ctrl+Shift+B` toggles activity sidebar
+- [x] `Cmd+B` / `Ctrl+Shift+B` toggles activity sidebar
 
 > **Phase 1 note on `C-x n r` and `C-x n c`:** these shortcuts change the
 > current tile's mode to Reference or AI Chat respectively, but the
@@ -143,98 +143,98 @@ deviations from the spec:
 > tile implementations.
 
 #### Buffer Pickers (SPEC.md §4.0.2)
-- [ ] Floating fuzzy picker dialog with live-filtered text input and
+- [x] Floating fuzzy picker dialog with live-filtered text input and
       keyboard-navigable results list; first item highlighted by default
-- [ ] Editor picker lists all text files in `notes/` plus
+- [x] Editor picker lists all text files in `notes/` plus
       `+ New note…` at the top
-- [ ] Preview picker lists only `.md` files in `notes/` plus
+- [x] Preview picker lists only `.md` files in `notes/` plus
       `+ New note…` at the top
-- [ ] `+ New note…` prompts for a filename; in the Editor picker,
+- [x] `+ New note…` prompts for a filename; in the Editor picker,
       a non-`.md` extension creates the file verbatim; in the
       Preview picker, a non-`.md` extension is rejected with an
       inline message
-- [ ] Canceling a mode-switch picker rolls back the mode change
+- [x] Canceling a mode-switch picker rolls back the mode change
       (SPEC.md §4.0.1)
-- [ ] `C-x b` opens the picker for the focused tile's current mode
+- [x] `C-x b` opens the picker for the focused tile's current mode
       (Editor picker for Editor, Preview picker for Preview, stub
       pickers for Reference/AI Chat in Phase 1)
-- [ ] In a Missing tile, `C-x b` opens the Editor picker (SPEC.md §4.2)
-- [ ] Drag a file from the Explorer sidebar onto a tile rebinds the
+- [x] In a Missing tile, `C-x b` opens the Editor picker (SPEC.md §4.2)
+- [x] Drag a file from the Explorer sidebar onto a tile rebinds the
       tile to that file (into Editor mode if the tile was Preview and
       the file is not `.md`)
 
 #### Activity Sidebar — Explorer Only
-- [ ] Collapsible sidebar, left edge of window
-- [ ] Explorer section: flat list of all notes sorted by modification
+- [x] Collapsible sidebar, left edge of window
+- [x] Explorer section: flat list of all notes sorted by modification
       time (per-project sort preference honored)
-- [ ] Sidebar is browse-only (clicking a file does not open it)
-- [ ] Drag a file from sidebar onto a tile to open it in that tile
+- [x] Sidebar is browse-only (clicking a file does not open it)
+- [x] Drag a file from sidebar onto a tile to open it in that tile
 
 #### Editor Tile (CodeMirror 6)
-- [ ] Markdown syntax highlighting (including fenced code blocks)
-- [ ] LaTeX inline (`$...$`) and display (`$$...$$`) highlighted as
+- [x] Markdown syntax highlighting (including fenced code blocks)
+- [x] LaTeX inline (`$...$`) and display (`$$...$$`) highlighted as
       distinct token types
-- [ ] Mermaid fenced blocks highlighted
-- [ ] Line numbers shown
-- [ ] Word wrap toggle button in tile title bar
-- [ ] Emacs keybindings via `@replit/codemirror-emacs`:
+- [x] Mermaid fenced blocks highlighted
+- [x] Line numbers shown
+- [x] Word wrap toggle button in tile title bar
+- [x] Emacs keybindings via `@replit/codemirror-emacs`:
   - `C-f/b/n/p`, `M-f/b`, `C-a/e`, `C-k`, `C-y`, `C-space`, `C-w`, `M-w`
   - `C-x C-s` (save), `C-/` (undo), `C-g` (cancel)
   - `M-<` (beginning of file), `M->` (end of file)
-- [ ] `C-x b` buffer switcher opens the picker over the window, as
+- [x] `C-x b` buffer switcher opens the picker over the window, as
       described above
-- [ ] `C-x C-f` opens a note by name (Editor picker, with "Create new
+- [x] `C-x C-f` opens a note by name (Editor picker, with "Create new
       note" option)
-- [ ] File saves to disk on `C-x C-s`; dirty indicator (`•`) in title
+- [x] File saves to disk on `C-x C-s`; dirty indicator (`•`) in title
       bar when unsaved
-- [ ] Autosave of the Y.Doc to `<filename>.tmp` every 30 seconds
+- [x] Autosave of the Y.Doc to `<filename>.tmp` every 30 seconds
       (SPEC.md §9.1)
-- [ ] OS spellcheck enabled (native webview spellcheck)
-- [ ] Spellcheck suppressed inside fenced code blocks and LaTeX blocks
-- [ ] Live word + character count in status bar below editor
+- [x] OS spellcheck enabled (native webview spellcheck)
+- [x] Spellcheck suppressed inside fenced code blocks and LaTeX blocks
+- [x] Live word + character count in status bar below editor
 
 #### Preview Tile (Rendered Markdown, Read-Only in Phase 1)
-- [ ] **Each Preview tile has its own independent buffer binding**
+- [x] **Each Preview tile has its own independent buffer binding**
       (SPEC.md §5.2); it does not follow any Editor tile's focus or
       pin state
-- [ ] Preview tile title bar shows the bound `.md` file with a `▾`
+- [x] Preview tile title bar shows the bound `.md` file with a `▾`
       dropdown (the Preview buffer picker)
-- [ ] remark/rehype pipeline: CommonMark → HTML
-- [ ] KaTeX: inline and display math rendered
-- [ ] Mermaid.js: fenced `mermaid` blocks rendered as diagrams
-- [ ] Debounced re-render (~150ms after any Y.Text change on the bound
+- [x] remark/rehype pipeline: CommonMark → HTML
+- [x] KaTeX: inline and display math rendered
+- [x] Mermaid.js: fenced `mermaid` blocks rendered as diagrams
+- [x] Debounced re-render (~150ms after any Y.Text change on the bound
       note)
-- [ ] When both an Editor and a Preview tile are bound to the same
+- [x] When both an Editor and a Preview tile are bound to the same
       note, they are scroll-synced (best-effort) and share a single
       Y.Doc per SPEC.md §5.2
-- [ ] Read-only in Phase 1 — no Tiptap editing (that lands in Phase 2)
+- [x] Read-only in Phase 1 — no Tiptap editing (that lands in Phase 2)
 
 #### Yjs CRDT Document Model
-- [ ] Each open note is backed by a single `Y.Doc` in memory
-- [ ] Y.Doc is created when the first tile binds to the note, released
+- [x] Each open note is backed by a single `Y.Doc` in memory
+- [x] Y.Doc is created when the first tile binds to the note, released
       when the last tile unbinds
-- [ ] CodeMirror binds to `Y.Text` via `y-codemirror.next`
-- [ ] Multiple Editor (or mixed Editor/Preview) tiles for the same note
+- [x] CodeMirror binds to `Y.Text` via `y-codemirror.next`
+- [x] Multiple Editor (or mixed Editor/Preview) tiles for the same note
       share the same `Y.Doc` — edits in any tile immediately appear in
       all others
-- [ ] `Y.Doc` serialized to `.tmp` file every 30 seconds
+- [x] `Y.Doc` serialized to `.tmp` file every 30 seconds
 - [x] **Undo-to-clean:** when an undo returns Y.Doc content to byte-for-byte
       equality with the `.md` file on disk, cancel the autosave timer for
       that note, delete its `.tmp` file (if present), and clear the dirty
       indicator (SPEC.md §5.1, §9.1)
 
 #### Last-Tile Release of a Modified Buffer (SPEC.md §4.0.1)
-- [ ] When a tile's mode changes, buffer changes, tile is closed, or
+- [x] When a tile's mode changes, buffer changes, tile is closed, or
       window is closed, and the tile was the *last* tile bound to a
       modified buffer, show the Save / Discard / Cancel dialog
-- [ ] **Save** writes to the `.md` file (same as `C-x C-s`) and deletes
+- [x] **Save** writes to the `.md` file (same as `C-x C-s`) and deletes
       the `.tmp` file
-- [ ] **Discard** deletes the `.tmp` file and proceeds
-- [ ] **Cancel** aborts the release entirely
-- [ ] On app quit with multiple modified buffers open, show a
+- [x] **Discard** deletes the `.tmp` file and proceeds
+- [x] **Cancel** aborts the release entirely
+- [x] On app quit with multiple modified buffers open, show a
       consolidated dialog listing every modified buffer with
       per-buffer Save/Discard checkboxes plus a single Cancel button
-- [ ] In Missing-mode tiles with unsaved changes, the simpler
+- [x] In Missing-mode tiles with unsaved changes, the simpler
       Continue/Cancel confirmation per SPEC.md §5.5 (saving is not
       offered because the underlying file is gone)
 
@@ -243,45 +243,45 @@ deviations from the spec:
 > exists once AI Chat tiles land in Phase 4. Phase 1 implements the
 > pin mechanism itself (pin icon, `C-x p`, one-tile-pinned invariant)
 > so the pin state is available when Phase 4 wires in the insert action.
-- [ ] Pin icon on Editor tiles; `C-x p` toggles pin; pinning a second
+- [x] Pin icon on Editor tiles; `C-x p` toggles pin; pinning a second
       Editor tile unpins the first
-- [ ] Pin is discarded when a pinned Editor tile enters `Missing` mode
+- [x] Pin is discarded when a pinned Editor tile enters `Missing` mode
 
 #### Missing Tile (Recovery Mode — SPEC.md §5.5)
-- [ ] `Missing` is a non-user-selectable tile mode entered automatically
+- [x] `Missing` is a non-user-selectable tile mode entered automatically
       when a bound buffer cannot be resolved
-- [ ] Entry triggers: layout restore with a missing file, file watcher
+- [x] Entry triggers: layout restore with a missing file, file watcher
       report of deletion/rename, failed read/write on the bound buffer
-- [ ] Title bar shows `⚠ Missing` and the unresolvable buffer name;
+- [x] Title bar shows `⚠ Missing` and the unresolvable buffer name;
       no dropdown
-- [ ] Tile is read-only; no autosave; no `.tmp` writes from this tile
-- [ ] In-memory Y.Doc of the missing note is preserved if any other
+- [x] Tile is read-only; no autosave; no `.tmp` writes from this tile
+- [x] In-memory Y.Doc of the missing note is preserved if any other
       (non-Missing) tile is still bound to it
-- [ ] Three buttons: **Locate…**, **Open a different buffer**,
+- [x] Three buttons: **Locate…**, **Open a different buffer**,
       **Close tile** — behaviors per SPEC.md §5.5
-- [ ] **Locate…** scopes the OS filesystem picker by the missing file's
+- [x] **Locate…** scopes the OS filesystem picker by the missing file's
       recorded directory (`notes/`, `references/`, or `ai-context/`),
       derived from the broken binding itself (no "prior mode" tracking)
-- [ ] **Open a different buffer** opens the Editor picker (SPEC.md §5.5)
-- [ ] Unsaved-changes Continue/Cancel confirmation on "Open a different
+- [x] **Open a different buffer** opens the Editor picker (SPEC.md §5.5)
+- [x] Unsaved-changes Continue/Cancel confirmation on "Open a different
       buffer" and "Close tile" when the buffer has unsaved edits
-- [ ] `Missing` tiles serialize in `layout.json`; resolvable bindings
+- [x] `Missing` tiles serialize in `layout.json`; resolvable bindings
       reopen normally on next launch, unresolvable ones reopen as
       `Missing`
 
 #### Crash Recovery (SPEC.md §9.1)
-- [ ] On project open, check for `.tmp` files alongside `.md` files
-- [ ] For each `.tmp` found, show recovery dialog:
+- [x] On project open, check for `.tmp` files alongside `.md` files
+- [x] For each `.tmp` found, show recovery dialog:
       "Unsaved changes found for `<filename>`. Recover or discard?"
-- [ ] Recover: open `.tmp` content in editor (user must save explicitly)
-- [ ] Discard: delete `.tmp` file
+- [x] Recover: open `.tmp` content in editor (user must save explicitly)
+- [x] Discard: delete `.tmp` file
 
 #### Error Handling
-- [ ] Each tile wrapped in a React Error Boundary
-- [ ] Tile-level errors show an error card, not a crash
-- [ ] Mermaid parse errors shown inline in preview: `[Mermaid parse error: …]`
-- [ ] KaTeX parse errors shown inline: `[LaTeX error: …]`
-- [ ] No `unwrap()` / `panic!()` on any Rust user-facing path
+- [x] Each tile wrapped in a React Error Boundary
+- [x] Tile-level errors show an error card, not a crash
+- [x] Mermaid parse errors shown inline in preview: `[Mermaid parse error: …]`
+- [x] KaTeX parse errors shown inline: `[LaTeX error: …]`
+- [x] No `unwrap()` / `panic!()` on any Rust user-facing path
 
 ### Tests — Phase 1 Exit Criterion
 
