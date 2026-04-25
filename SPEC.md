@@ -141,6 +141,8 @@ my-diagram.NNNN.drawing
 ```
 ````
 
+The YAML front-matter block is metadata, not content. It is parsed by both the Rust backend (for sidebar sorting by `modified`, full-text search field weighting, and the AI `list_notes()` tool's title/tag projection) and the frontend rendering pipeline. In an Editor tile the front-matter is shown verbatim and is fully editable as part of the note's source. In a Preview tile the front-matter is parsed for metadata and **hidden from the rendered output** — it is not rendered as text, as a thematic break, or as any other visible element. This visibility rule applies from the first phase that ships a Preview tile (see `ROADMAP.md`).
+
 ### 3.3 AI Context Format
 
 Conversation history stored as JSON (Claude Messages API format) per session, scoped to a project. Includes:
@@ -470,6 +472,7 @@ The editor must implement Emacs keybindings via CodeMirror 6's `@codemirror/lang
 
 **Rendering pipeline:**
 - Markdown → HTML (remark/rehype)
+- YAML front-matter (the `---`-delimited block at the top of the note, per §3.2) is parsed for metadata via `remark-frontmatter` and **stripped from the rendered output** — it must not appear in the Preview tile as text, as a thematic break, or as any other visible element
 - LaTeX → rendered math (KaTeX, both inline and display)
 - Mermaid code blocks → rendered diagrams (Mermaid.js)
 - Updates on each keystroke in any tile bound to the same note (debounced ~150ms)
