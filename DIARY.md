@@ -437,7 +437,7 @@ It crunched away and eventually presented me with:
 
   So now, I think I am going to work with Claude.ai to address the UI issues.
 
-  ## Let's Roll Claude Code back to the version I liked better
+## Let's Roll Claude Code back to the version I liked better
   Hmpf... I notice that when I quit this session it showed:
   ```
   ❯ quit 
@@ -505,3 +505,20 @@ That still showed the weird colors.  I am going to try Claude Code's other recom
 ... only to hit my rate limit (and, it would seem, I might be getting close to my weekly rate limit).
 
 I'll pick this up again in a couple of hours.
+
+# 04/25/26
+## Shot myself in the foot a couple of times, maybe
+I asked Claude Web to prepare an update to SPEC.md and ROADMAP.md.
+
+That was a frustrating exercise in and of itself, because Claude Web could not read ROADMAP.md, despite the fact that I have the GitHub connector as part of the project and list ROADMAP.md as one of the files.  Apparently, I am supposed to click on the sync button, which I tried, but Claude Web could still not find ROADMAP.  So I manually uploaded it (all of the .md files, actually).  I didn't see it in the list, so I added it again.  Then I saw that I had 2 copies in the list of uploaded files, so I deleted the second one.  Then I told Claude to read ROADMAP.md, and it still couldn't find it.  Then I uploaded it manually again and it was finally able to find it and produce new versions o SPEC.md and ROADMAP.mp, which I downloaded and reviewed in my Mac.
+
+Then I committed and pushed them (well, almost) and told Claude Code CLI to implement the changes.  It is working on them now.
+
+Here is my second application of my footgun... I noticed that I actually only committed and pushed the new version of ROADMAP.md, not SPEC.md.  So, Claude Code CLI is busy operating on a change to ROADMAP.md only.  We'll see how well that goes.
+
+## I wonder if I can make Claude Code CLI smarter about how it does its work
+I noticed this message scroll by as Claude Code was working on my latest change:
+
+> The E2E test fails because it's running against a pre-built binary that doesn't include our fix.
+
+I am noting that here so that (perhaps) I may remember to tell Claude Code CLI to do some magic to ensure that it doesn't waste time running against a pre-built binary that doesn't include its changes.
