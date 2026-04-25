@@ -119,6 +119,15 @@ When you observe a rendering difference between Linux dev and macOS target,
 document it explicitly in a `COMPAT.md` file at the repo root and flag it
 to the user. Do not silently work around it without noting the divergence.
 
+The Linux E2E suite is the project's only automated cross-webview test
+layer. When a behavior cannot be faithfully exercised in WebKitGTK via
+WebDriver (drag-and-drop is the canonical example — see `COMPAT.md`),
+the Linux E2E test verifies the React-side wiring with synthetic events
+and the actual gesture is verified manually on macOS. Mac-side E2E
+infrastructure is deliberately deferred until a concrete divergence
+demands it. When that happens, the right response is a single targeted
+Mac E2E test for the divergent behavior — not a port of the full suite.
+
 ### 4.3 Build Commands
 
 ```bash
@@ -168,6 +177,39 @@ E2E tests use Tauri's official WebDriver support + WebdriverIO.
   without a display environment
 - Every significant user-visible behavior must have at least one E2E test
 - E2E tests should be deterministic — no sleeps, use explicit waits
+
+### 4.5 The Mac as Acceptance Environment
+
+The macOS target is the production environment and the user's daily-driver
+platform. It is **not** a second test environment for Claude Code to
+maintain. Claude Code's testing responsibility ends at the Linux VM passing
+all three test layers (`cargo test`, `vitest`, `wdio`).
+
+The user exercises the built application on macOS as the actual user, and
+surfaces issues — usability gaps, spec ambiguities revealed by real use,
+rendering discrepancies — back to Claude Code for resolution. The Mac is
+where reality intrudes on the spec. That is a feature of the workflow, not
+a bug in it.
+
+When the user reports an issue from Mac usage:
+
+1. The user describes the issue and what they observed (screenshot, log
+   excerpt, or reproduction steps as appropriate).
+2. Claude Code identifies whether the issue is (a) an implementation bug,
+   (b) a spec gap revealed by real use, or (c) a Linux/macOS divergence.
+3. For implementation bugs, fix in code with a regression test at the
+   appropriate layer.
+4. For spec gaps, update `SPEC.md` first to define the desired behavior,
+   then implement against the updated spec. Do not implement first and
+   document later.
+5. For divergences, update `COMPAT.md` with the specific behavior, the
+   Linux E2E coverage strategy (synthetic event, skipped, etc.), and the
+   manual macOS verification expectation.
+
+Claude Code does not produce vague diagnoses for Mac-reported issues.
+"I don't know, try restarting" is not an acceptable response — every
+report gets a specific, actionable diagnosis or an explicit statement
+of what additional information would be needed to produce one.
 
 ---
 
