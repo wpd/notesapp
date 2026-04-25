@@ -121,4 +121,55 @@ describe("markdownPipeline", () => {
       expect(html).toContain("<del>");
     });
   });
+
+  describe("YAML front-matter stripping", () => {
+    it("strips a standard front-matter block from rendered output", async () => {
+      const md = `---
+title: "Test Note"
+created: 2026-01-01T00:00:00Z
+modified: 2026-01-01T00:00:00Z
+tags: [test]
+---
+
+# Test Note
+
+Body content here.`;
+      const html = await renderMarkdown(md);
+      expect(html).not.toContain("title:");
+      expect(html).not.toContain("created:");
+      expect(html).not.toContain("modified:");
+      expect(html).not.toContain("tags:");
+      expect(html).not.toMatch(/<hr[\s/>]/);
+      expect(html).toContain("Body content here.");
+      expect(html).toMatch(/<h1[\s>]/);
+    });
+
+    it("renders normally when there is no front-matter", async () => {
+      const md = "# No Front Matter\n\nJust body text.";
+      const html = await renderMarkdown(md);
+      expect(html).toContain("No Front Matter");
+      expect(html).toContain("Just body text.");
+    });
+
+    it("does not strip --- that is not at the start of the document", async () => {
+      const md = "# Title\n\nSome text.\n\n---\n\nMore text.";
+      const html = await renderMarkdown(md);
+      expect(html).toMatch(/<hr[\s/>]/);
+      expect(html).toContain("Some text.");
+      expect(html).toContain("More text.");
+    });
+
+    it("strips front-matter from sync rendering too", () => {
+      const md = `---
+title: "Sync Test"
+tags: []
+---
+
+# Hello`;
+      const html = renderMarkdownSync(md);
+      expect(html).not.toContain("title:");
+      expect(html).toMatch(/<h1[\s>]/);
+      expect(html).toContain("Hello");
+    });
+  });
 });

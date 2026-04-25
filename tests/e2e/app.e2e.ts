@@ -459,6 +459,65 @@ describe("Editor typing updates preview", () => {
 });
 
 // ---------------------------------------------------------------------------
+// YAML front-matter stripping in Preview
+// ---------------------------------------------------------------------------
+
+describe("Preview strips YAML front-matter", () => {
+  it("a note with front-matter renders with front-matter hidden", async () => {
+    const cmContent = await $('.cm-content');
+    await cmContent.waitForDisplayed({ timeout: 5000 });
+    await cmContent.click();
+    await browser.pause(300);
+
+    // Select all existing content and replace with a note containing front-matter
+    await browser.action('key')
+      .down(KEY.CTRL).down('a').up('a').up(KEY.CTRL)
+      .perform();
+    await browser.pause(100);
+
+    const lines = [
+      '---',
+      'title: "E2E Front Matter Test"',
+      'created: 2026-01-01T00:00:00Z',
+      'modified: 2026-01-01T00:00:00Z',
+      'tags: [e2e, test]',
+      '---',
+      '',
+      '# Visible Heading',
+      '',
+      'Visible body paragraph.',
+    ];
+
+    for (let i = 0; i < lines.length; i++) {
+      for (const ch of lines[i]) {
+        await browser.action('key').down(ch).up(ch).perform();
+      }
+      if (i < lines.length - 1) {
+        await browser.action('key').down(KEY.RETURN).up(KEY.RETURN).perform();
+      }
+    }
+    await browser.pause(700); // wait for 150ms debounce
+
+    const previewContent = await waitForPreviewContent(5000);
+    const text = await previewContent.getText();
+
+    // Front-matter must not be visible
+    expect(text).not.toContain('title:');
+    expect(text).not.toContain('created:');
+    expect(text).not.toContain('modified:');
+    expect(text).not.toContain('tags:');
+
+    // Visible content must render
+    expect(text).toContain('Visible Heading');
+    expect(text).toContain('Visible body paragraph.');
+
+    // No <hr> from front-matter delimiters
+    const html = await previewContent.getHTML();
+    expect(html).not.toMatch(/<hr[\s/>]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Emacs keybindings (smoke test — full set provided by @replit/codemirror-emacs)
 // ---------------------------------------------------------------------------
 

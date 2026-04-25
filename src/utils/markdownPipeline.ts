@@ -5,12 +5,13 @@
 /**
  * Shared markdown → HTML rendering pipeline.
  *
- * Uses:  unified → remark-parse → remark-gfm → remark-math
+ * Uses:  unified → remark-parse → remark-frontmatter → remark-gfm → remark-math
  *              → remark-rehype → rehype-katex → rehype-raw → rehype-stringify
  */
 
 import { unified } from "unified";
 import remarkParse from "remark-parse";
+import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkRehype from "remark-rehype";
@@ -60,6 +61,7 @@ let _processor: ReturnType<typeof buildProcessor> | null = null;
 function buildProcessor() {
   return unified()
     .use(remarkParse)
+    .use(remarkFrontmatter)   // parse & strip YAML front-matter
     .use(remarkGfm)
     .use(remarkMath)
     .use(remarkRehype, { allowDangerousHtml: true })
