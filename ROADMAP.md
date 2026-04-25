@@ -200,7 +200,7 @@ deviations from the spec:
 - [x] Preview tile title bar shows the bound `.md` file with a `▾`
       dropdown (the Preview buffer picker)
 - [x] remark/rehype pipeline: CommonMark → HTML
-- [ ] YAML front-matter (the `---`-delimited block at the top of a note,
+- [x] YAML front-matter (the `---`-delimited block at the top of a note,
       per SPEC.md §3.2) is parsed by `remark-frontmatter` and stripped
       from the rendered output — it is not rendered as text, as a
       thematic break, or as any other visible element
