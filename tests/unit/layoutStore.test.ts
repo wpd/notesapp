@@ -567,7 +567,7 @@ describe("layoutStore", () => {
           "editor-2": { mode: "editor", filePath: "/p/deleted.md" },
         },
       };
-      getInvokeMock().mockImplementation(async (cmd: string, args?: any) => {
+      getInvokeMock().mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
         if (cmd === "load_layout") return JSON.stringify(persisted);
         if (cmd === "file_exists") {
           return args.path === "/p/exists.md";

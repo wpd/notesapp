@@ -117,7 +117,7 @@ function actionBtnStyle(color: string): React.CSSProperties {
   };
 }
 
-export function deriveDirectoryScope(missingPath: string): string {
+function deriveDirectoryScope(missingPath: string): string {
   if (missingPath.includes("/notes/")) return "notes";
   if (missingPath.includes("/references/")) return "references";
   if (missingPath.includes("/ai-context/")) return "ai-context";

@@ -45,62 +45,8 @@ export default function BufferSwitcher({
 
   const effectiveTileId = targetTileId ?? focusedTileId;
 
-  // Phase 1 stubs for Reference and AI Chat
-  if (pickerMode === "reference-stub" || pickerMode === "aichat-stub") {
-    const label =
-      pickerMode === "reference-stub" ? "Reference" : "AI Chat";
-    return (
-      <div
-        data-testid="buffer-switcher-overlay"
-        onClick={onClose}
-        style={overlayStyle}
-      >
-        <div
-          data-testid="buffer-switcher-stub"
-          onClick={(e) => e.stopPropagation()}
-          style={dialogStyle}
-        >
-          <div style={{ padding: "2rem", textAlign: "center" }}>
-            <p
-              style={{
-                fontSize: "15px",
-                color: "var(--color-text-primary)",
-                fontFamily: "var(--font-prose)",
-                marginBottom: "1rem",
-              }}
-            >
-              {label} mode is not yet available.
-            </p>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "var(--color-text-secondary)",
-                fontFamily: "var(--font-prose)",
-              }}
-            >
-              This feature will be implemented in a future phase.
-            </p>
-            <button
-              onClick={onClose}
-              style={{
-                marginTop: "1rem",
-                padding: "6px 16px",
-                background: "var(--color-accent)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontFamily: "var(--font-prose)",
-                fontSize: "13px",
-              }}
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const isStub =
+    pickerMode === "reference-stub" || pickerMode === "aichat-stub";
 
   // Load notes list — for editor/find-file, load all text files; for preview, .md only
   useEffect(() => {
@@ -277,6 +223,63 @@ export default function BufferSwitcher({
       }
     }
   };
+
+  // Phase 1 stubs for Reference and AI Chat — rendered after all hooks
+  if (isStub) {
+    const label =
+      pickerMode === "reference-stub" ? "Reference" : "AI Chat";
+    return (
+      <div
+        data-testid="buffer-switcher-overlay"
+        onClick={onClose}
+        style={overlayStyle}
+      >
+        <div
+          data-testid="buffer-switcher-stub"
+          onClick={(e) => e.stopPropagation()}
+          style={dialogStyle}
+        >
+          <div style={{ padding: "2rem", textAlign: "center" }}>
+            <p
+              style={{
+                fontSize: "15px",
+                color: "var(--color-text-primary)",
+                fontFamily: "var(--font-prose)",
+                marginBottom: "1rem",
+              }}
+            >
+              {label} mode is not yet available.
+            </p>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "var(--color-text-secondary)",
+                fontFamily: "var(--font-prose)",
+              }}
+            >
+              This feature will be implemented in a future phase.
+            </p>
+            <button
+              onClick={onClose}
+              style={{
+                marginTop: "1rem",
+                padding: "6px 16px",
+                background: "var(--color-accent)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontFamily: "var(--font-prose)",
+                fontSize: "13px",
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const placeholderText =
     pickerMode === "preview" ? "Open markdown note…" : "Open note…";

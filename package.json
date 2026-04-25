@@ -18,7 +18,8 @@
     "lint": "eslint src tests --ext .ts,.tsx",
     "lint:fix": "eslint src tests --ext .ts,.tsx --fix",
     "format": "prettier --write .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky"
   },
   "dependencies": {
     "@codemirror/commands": "^6.7.1",
@@ -73,7 +74,9 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.14",
     "globals": "^15.12.0",
+    "husky": "^9.1.7",
     "jsdom": "^25.0.1",
+    "lint-staged": "^16.4.0",
     "postcss": "^8.4.49",
     "prettier": "^3.4.2",
     "tailwindcss": "^3.4.15",
@@ -83,5 +86,10 @@
     "vite": "^5.4.11",
     "vitest": "^2.1.9",
     "webdriverio": "^8.40.5"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --max-warnings 0"
+    ]
   }
 }

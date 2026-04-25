@@ -137,6 +137,12 @@ npm run test:unit
 # Run E2E tests (headless, uses Xvfb)
 npm run test:e2e
 
+# Typecheck (must pass before any commit)
+npm run typecheck
+
+# Lint (must pass before any commit)
+npm run lint
+
 # Run all tests (must pass before any commit)
 npm run test
 
@@ -144,7 +150,10 @@ npm run test
 npm run tauri build
 ```
 
-`npm run test` must exit 0 before you consider any task complete.
+All CI checks — `npm run typecheck`, `npm run lint`, and `npm run test` —
+must exit 0 before you consider any task complete. These three commands
+mirror the GitHub Actions CI pipeline; if any of them fail locally, CI
+will also fail. Run all three before declaring work finished.
 Never ask the user to manually verify behavior that a test could verify.
 
 ### 4.4 E2E Test Infrastructure
@@ -483,7 +492,8 @@ Emacs bindings in the CodeMirror editor are implemented via
 - **Never `unwrap()` or `panic!()` on user-facing Rust paths.**
 - **Never hardcode hex colors in component files** — always use CSS variables.
 - **Never leave a `TODO` without filing it as a known issue** in `ISSUES.md`.
-- **Never commit with failing tests** — `npm run test` must pass.
+- **Never commit with failing CI checks** — `npm run typecheck`,
+  `npm run lint`, and `npm run test` must all pass.
 - **Never use `any` in TypeScript.**
 - **Never use system fonts** — always use bundled JetBrains Mono / Inter.
 - **Never ship `cargo clippy` warnings** — zero warnings policy.

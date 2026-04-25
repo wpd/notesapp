@@ -1537,8 +1537,6 @@ describe("Consolidated quit dialog", () => {
       ).__notesapp_layout__;
       if (!layoutFn || !info) return;
       const store = layoutFn();
-      // Extract the filename for the dialog listing.
-      const fileName = info.filePath.split("/").pop() ?? info.filePath;
       store.setPendingDialog({
         kind: "quit",
         dirtyBuffers: [
