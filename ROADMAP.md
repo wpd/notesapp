@@ -200,6 +200,10 @@ deviations from the spec:
 - [x] Preview tile title bar shows the bound `.md` file with a `▾`
       dropdown (the Preview buffer picker)
 - [x] remark/rehype pipeline: CommonMark → HTML
+- [ ] YAML front-matter (the `---`-delimited block at the top of a note,
+      per SPEC.md §3.2) is parsed by `remark-frontmatter` and stripped
+      from the rendered output — it is not rendered as text, as a
+      thematic break, or as any other visible element
 - [x] KaTeX: inline and display math rendered
 - [x] Mermaid.js: fenced `mermaid` blocks rendered as diagrams
 - [x] Debounced re-render (~150ms after any Y.Text change on the bound
@@ -312,6 +316,9 @@ All of the following must pass (`npm run test` exits 0):
 - Canceling a mode-switch picker rolls back the mode change
 - `C-x b` in a Missing tile opens the Editor picker
 - Markdown → HTML rendering pipeline (remark/rehype) produces correct output
+- Preview rendering strips YAML front-matter: a note beginning with a
+  `---`-delimited YAML block renders only the body content, with no
+  front-matter text and no `<hr>` element generated from the block
 - KaTeX inline and display math renders without error
 - Mermaid block renders or shows error card (no crash)
 - Yjs `Y.Doc` shared between two CodeMirror instances stays in sync
@@ -330,6 +337,9 @@ All of the following must pass (`npm run test` exits 0):
   note) renders on first launch of a scaffolded project
 - Typing in the Editor tile updates the Preview tile within 500ms
   (both tiles bound to the same note)
+- A note containing YAML front-matter renders in the Preview tile with
+  the front-matter hidden — no `title:`/`tags:`/`created:`/`modified:`
+  lines and no thematic break visible at the top of the rendered output
 - A Preview tile bound to a *different* note is not affected by edits
   to the Editor tile's note
 - `C-x h` splits the focused tile horizontally; both halves inherit
