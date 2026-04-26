@@ -61,6 +61,14 @@ deviations from the spec:
   chooser's result if it lands on an uninitialized directory) silently
   creates `notes/untitled.md` with the standard front-matter block and
   opens the default two-tile layout.
+- **Scaffolded `notes/untitled.md` body is populated from
+  `docs/MACOS_ACCEPTANCE_TESTS.md`** rather than being empty. SPEC.md
+  §6.1.1 specifies an empty body; until the new-project wizard (Phase 6)
+  gives the user a way to enter their own starter content, the scaffold
+  instead embeds the macOS acceptance-test checklist so a fresh-project
+  launch on a Mac drops the user straight into the manual-test workflow
+  that Linux CI cannot cover. Reverts to the spec'd empty body when the
+  wizard lands in Phase 6.
 - **No sidebar Search, Tags, or References sections.** SPEC.md §4.2
   describes all four sidebar sections. Phase 1 implements only the
   Explorer section. Search lands in Phase 3, References in Phase 3,

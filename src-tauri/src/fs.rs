@@ -176,13 +176,16 @@ pub fn scaffold_project(dir: &Path) -> Result<PathBuf, AppError> {
         }
     }
 
-    // Create the first note with standard front-matter
+    // Create the first note: standard front-matter + acceptance-test body.
+    // Body is embedded from docs/MACOS_ACCEPTANCE_TESTS.md at compile time
+    // (ROADMAP.md Phase 1 substitution — reverts to empty body in Phase 6).
+    const STARTER_BODY: &str = include_str!("../../docs/MACOS_ACCEPTANCE_TESTS.md");
     let now = iso_now();
-    let front_matter = format!(
-        "---\ntitle: \"untitled\"\ncreated: {}\nmodified: {}\ntags: []\n---\n\n",
-        now, now,
+    let contents = format!(
+        "---\ntitle: \"untitled\"\ncreated: {}\nmodified: {}\ntags: []\n---\n\n{}",
+        now, now, STARTER_BODY,
     );
-    std::fs::write(&first_note_path, front_matter)?;
+    std::fs::write(&first_note_path, contents)?;
 
     Ok(first_note_path)
 }
@@ -569,6 +572,20 @@ mod tests {
         assert!(content.starts_with("---\n"));
         assert!(content.contains("title: \"untitled\""));
         assert!(content.contains("tags: []"));
+    }
+
+    #[test]
+    fn scaffold_untitled_embeds_macos_acceptance_tests() {
+        let tmp = TempDir::new().unwrap();
+        scaffold_project(tmp.path()).unwrap();
+        let body = std::fs::read_to_string(
+            tmp.path().join("notes").join("untitled.md"),
+        )
+        .unwrap();
+        // Sentinels from docs/MACOS_ACCEPTANCE_TESTS.md; guards against
+        // include_str! path drift or accidental emptying of the source doc.
+        assert!(body.contains("Smart Dashes"), "missing Smart Dashes section");
+        assert!(body.contains("Smart Quotes"), "missing Smart Quotes section");
     }
 
     #[test]
