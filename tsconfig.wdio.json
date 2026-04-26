@@ -1,0 +1,19 @@
+{
+  "_license": "MIT — Copyright (c) 2026 NotesApp Contributors",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "composite": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["@wdio/globals/types", "@types/mocha", "node"]
+  },
+  "include": ["wdio.conf.ts", "wdio-env.conf.ts"]
+}

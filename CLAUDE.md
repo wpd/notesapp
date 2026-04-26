@@ -82,7 +82,7 @@ npm run tauri build                               # production build (Linux)
 
 cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit tests
 npm run test:unit                                 # Vitest frontend unit tests
-npm run test:e2e                                  # WebdriverIO E2E (invokes xvfb-run internally)
+npm run test:e2e                                  # Rebuilds release binary first, then WebdriverIO E2E. No-op rebuild ~10-25s. Do not invoke wdio directly.
 
 npm run typecheck                                 # must pass before commit
 npm run lint                                      # must pass before commit

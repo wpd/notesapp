@@ -34,7 +34,7 @@
 
 import path from "path";
 import { fileURLToPath } from "url";
-import { ChildProcess, spawn } from "child_process";
+import { ChildProcess, spawn, spawnSync } from "child_process";
 import net from "net";
 import os from "os";
 import fs from "fs";
@@ -175,7 +175,6 @@ export const config: WebdriverIO.Config = {
 
   onPrepare: async function () {
     // 0. Kill any stale processes left from a previous aborted run.
-    const { spawnSync } = await import("child_process");
     spawnSync("fuser", ["-k", `${WEBKIT_INSPECTION_PORT}/tcp`, `${WEBDRIVER_PORT}/tcp`], {
       stdio: "ignore",
     });
@@ -272,6 +271,12 @@ export const config: WebdriverIO.Config = {
   onComplete: function () {
     if (webkitDriver) webkitDriver.kill();
     if (appProcess) appProcess.kill();
+    // SIGTERM alone does not kill WebKitWebDriver's and WebKitGTK's subprocess
+    // trees on Linux (they may be in a separate process group). Force-clean the
+    // ports so the next run's onPrepare finds them free without needing fuser.
+    spawnSync("fuser", ["-k", `${WEBKIT_INSPECTION_PORT}/tcp`, `${WEBDRIVER_PORT}/tcp`], {
+      stdio: "ignore",
+    });
     // Clean up temp project dir
     if (testProjectDir) {
       try {

@@ -14,7 +14,7 @@
     "test": "npm run test:rust && npm run test:unit && npm run test:e2e",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:unit": "vitest run",
-    "test:e2e": "node scripts/check-e2e-deps.js",
+    "test:e2e": "npm run tauri:build && node scripts/check-e2e-deps.js",
     "lint": "eslint src tests --ext .ts,.tsx",
     "lint:fix": "eslint src tests --ext .ts,.tsx --fix",
     "format": "prettier --write .",
