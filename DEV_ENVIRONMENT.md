@@ -62,7 +62,44 @@ sudo apt update && sudo apt install -y \
 >   for E2E tests on Linux; without it `npm run test:e2e` skips with a warning
 > - `build-essential`: C/C++ toolchain required by some Rust crates and Node native addons
 
-### 3.2 Rust
+### 3.2 GitHub CLI (`gh`)
+
+Required for Claude Code to inspect CI failures, manage PRs, and query
+GitHub without falling back to unauthenticated WebFetch. Install via the
+official apt repository:
+
+```bash
+sudo mkdir -p -m 755 /etc/apt/keyrings
+wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] \
+  https://cli.github.com/packages stable main" \
+  | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install -y gh
+```
+
+Then authenticate once (interactive — run this yourself, not via Claude Code):
+
+```bash
+gh auth login
+# Choose: GitHub.com → HTTPS → Login with a web browser
+```
+
+Verify:
+
+```bash
+gh auth status    # should show "Logged in to github.com"
+gh --version
+```
+
+> **Why this matters for Claude Code:** without `gh`, Claude Code falls
+> back to `WebFetch` for GitHub URLs, which is unauthenticated, may be
+> rate-limited, and returns HTML rather than structured log data. With `gh`
+> authenticated, CI log fetching (`gh run view --log-failed`) is a single
+> reliable command.
+
+### 3.3 Rust
 
 Install via `rustup` (manages Rust versions without `sudo`):
 
@@ -82,7 +119,7 @@ Add the `wasm32` target (needed for some Tauri tooling):
 rustup target add wasm32-unknown-unknown
 ```
 
-### 3.3 Node.js
+### 3.4 Node.js
 
 Use `nvm` (Node Version Manager) — avoids `sudo` and allows per-project version pinning:
 
@@ -100,7 +137,7 @@ node --version    # expect v20.x
 npm --version     # expect 10.x
 ```
 
-### 3.4 Tauri CLI
+### 3.5 Tauri CLI
 
 ```bash
 cargo install tauri-cli --version "^2.0"
@@ -111,7 +148,7 @@ Verify:
 cargo tauri --version
 ```
 
-### 3.5 WebdriverIO + Tauri Driver (for E2E tests)
+### 3.6 WebdriverIO + Tauri Driver (for E2E tests)
 
 The Tauri WebDriver binary must be installed separately:
 
@@ -122,7 +159,7 @@ cargo install tauri-driver
 WebdriverIO itself is installed as a dev dependency via `npm` when the project
 is scaffolded (`npm install`). No global install needed.
 
-### 3.6 Python (for native addon build tooling)
+### 3.7 Python (for native addon build tooling)
 
 Ubuntu 24.04 ships Python 3.12. Verify it is available:
 
@@ -138,7 +175,7 @@ sudo apt install -y python3 python3-pip
 Python is not used directly by this project but is required by some Node
 native addon build scripts (`node-gyp`).
 
-### 3.7 Optional: JetBrains Mono and Inter Fonts (system-level)
+### 3.8 Optional: JetBrains Mono and Inter Fonts (system-level)
 
 The fonts are **bundled in `public/fonts/`** and do not require system installation.
 However, installing them system-wide gives Claude Code correct font metrics when
@@ -174,6 +211,8 @@ Xvfb -help 2>&1 | head -1
 google-chrome --version
 git --version
 pkg-config --version
+gh --version
+gh auth status
 ```
 
 ---
@@ -251,7 +290,8 @@ while still preventing mid-task pauses:
       "Bash(ps:*)",
       "Bash(env:*)",
       "Bash(which:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(gh:*)"
     ],
     "deny": [
       "Bash(sudo:*)"
@@ -352,6 +392,7 @@ You should not need to manage Xvfb manually.
 | Chrome | any recent | pre-installed |
 | Claude Code | latest | pre-installed |
 | Claude for Chrome | latest | pre-installed |
+| GitHub CLI (`gh`) | 2.x | apt (official repo) — **required; authenticate after install** |
 
 ---
 
@@ -363,6 +404,9 @@ have already been installed with `sudo apt`.
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+
+echo "=== NOTE: gh auth login must be run manually after this script ==="
+echo ""
 
 echo "=== Installing Rust ==="
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -381,6 +425,8 @@ nvm use 20
 nvm alias default 20
 
 echo "=== Verifying ==="
+gh --version
+gh auth status || echo "WARNING: gh not authenticated — run 'gh auth login' manually"
 rustc --version
 cargo --version
 cargo tauri --version
