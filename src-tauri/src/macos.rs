@@ -2,7 +2,7 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
-use objc2::runtime::AnyObject;
+use objc2::runtime::{AnyObject, Bool};
 use objc2::{class, msg_send};
 use std::ffi::CStr;
 
@@ -34,7 +34,7 @@ pub fn disable_smart_substitutions() {
         for key in FALSE_KEYS {
             let ns_key: *mut AnyObject =
                 msg_send![nsstring_cls, stringWithUTF8String: key.as_ptr()];
-            let _: () = msg_send![ud, setBool: 0i8, forKey: ns_key];
+            let _: () = msg_send![ud, setBool: Bool::NO, forKey: ns_key];
         }
     }
 }
