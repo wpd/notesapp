@@ -6,11 +6,16 @@ pub mod commands;
 pub mod error;
 pub mod fs;
 pub mod watcher;
+#[cfg(target_os = "macos")]
+mod macos;
 
 pub use error::AppError;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    macos::disable_smart_substitutions();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
