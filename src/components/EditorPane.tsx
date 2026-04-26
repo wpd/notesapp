@@ -23,6 +23,7 @@ import useProjectStore from "../stores/projectStore";
 import { notesAppTheme } from "../utils/editorTheme";
 import { spellcheckSuppression } from "../utils/spellcheckSuppression";
 import { mathMermaidHighlight } from "../utils/mathMermaidHighlight";
+import { disableMacosAutoSubstitution } from "../utils/disableMacosAutoSubstitution";
 
 interface EditorPaneProps {
   tileId: string;
@@ -102,7 +103,7 @@ export default function EditorPane({
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       notesAppTheme,
       wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
-      EditorView.contentAttributes.of({ spellcheck: "true" }),
+      ...disableMacosAutoSubstitution,
       spellcheckSuppression,
       mathMermaidHighlight,
       EditorView.updateListener.of((update) => {
