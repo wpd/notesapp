@@ -14,6 +14,8 @@
 /vite.config.js
 /wdio.conf.d.ts
 /wdio.conf.js
+/wdio-env.conf.d.ts
+/wdio-env.conf.js
 
 # Node
 /node_modules/

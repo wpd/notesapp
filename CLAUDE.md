@@ -84,7 +84,7 @@ cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit tests
 npm run test:unit                                 # Vitest frontend unit tests
 npm run test:e2e                                  # Rebuilds release binary first, then WebdriverIO E2E. No-op rebuild ~10-25s. Do not invoke wdio directly.
 
-npm run typecheck                                 # must pass before commit
+npm run typecheck                                 # must pass before commit (runs tsc -b, not tsc --noEmit — checks all referenced projects including tsconfig.node.json and tsconfig.wdio.json)
 npm run lint                                      # must pass before commit
 npm run test                                      # must pass before commit (mirrors CI)
 ```
