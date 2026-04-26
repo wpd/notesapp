@@ -522,3 +522,42 @@ I noticed this message scroll by as Claude Code was working on my latest change:
 > The E2E test fails because it's running against a pre-built binary that doesn't include our fix.
 
 I am noting that here so that (perhaps) I may remember to tell Claude Code CLI to do some magic to ensure that it doesn't waste time running against a pre-built binary that doesn't include its changes.
+
+## More wasted tokens
+> gh is not available. Trying WebFetch to read the CI failure log.
+Ran out of tokens while addressing.  I think I need to
+
+```bash
+sudo apt install -y gh
+```
+
+But, Claude Code CLI says I also need to
+
+```bash
+gh auth login
+```
+which I don't want to do on my VM.  I asked Claude Code about that and ran out of tokens for the night.
+
+Claude told me I didn't have a choice.  So I asked Claude if there was a machine specific file I could create that said "Use WebFetch instead of gh".  It told me to put the following in `~/.claude/CLAUDE.md`, so I did:
+
+```bash
+cat > ~/.claude/CLAUDE.md
+- Do not use `gh` CLI for any purpose. Use `WebFetch` to access GitHub URLs instead.            
+    `gh auth login` has not been run on this machine and the CLI is unauthenticated. 
+```
+
+
+## Another UI feature I don't care for
+Apparently, pressing `-` multiple times followed by a space collapses the
+multiple hyphen characters (I tried with 5) into a single not-hyphen character,
+which makes constructing tables difficult.
+
+| Heading 1 | Heading 2 |
+| --------- | --------- |
+| Item 1    | Item 2    |
+| Item 3.   | Item 4.   |
+
+doesn't work.  Claude claims that is MacOS specific behavior and is fixing it now.
+
+## Should mermaid diagrams work?  I think they should
+Check with Claude tomorrow.
