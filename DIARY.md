@@ -561,3 +561,17 @@ doesn't work.  Claude claims that is MacOS specific behavior and is fixing it no
 
 ## Should mermaid diagrams work?  I think they should
 Check with Claude tomorrow.
+
+I tried
+$$
+
+flowchart TD
+    A[Christmas] -->|Get money| B(Go shopping)
+    B --> C{Let me think}
+    C -->|One| D[Laptop]
+    C -->|Two| E[iPhone]
+    C -->|Three| F[fa:fa-car Car]
+  
+$$
+
+And it didn't work.
