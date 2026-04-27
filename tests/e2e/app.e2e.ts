@@ -180,6 +180,20 @@ describe("App launch", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Spellcheck DOM attribute
+// ---------------------------------------------------------------------------
+
+describe("Spellcheck DOM attribute", () => {
+  it("CodeMirror contenteditable has spellcheck=true", async () => {
+    await waitForId("app-root", 25000);
+    const cmContent = await $(".cm-content");
+    await cmContent.waitForDisplayed({ timeout: 10000 });
+    const spellcheck = await cmContent.getAttribute("spellcheck");
+    expect(spellcheck).toBe("true");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Default tiling layout
 // ---------------------------------------------------------------------------
 

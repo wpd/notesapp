@@ -22,6 +22,7 @@ import useLayoutStore from "../stores/layoutStore";
 import useProjectStore from "../stores/projectStore";
 import { notesAppTheme } from "../utils/editorTheme";
 import { spellcheckSuppression } from "../utils/spellcheckSuppression";
+import { spellcheckTrigger } from "../utils/spellcheckTrigger";
 import { mathMermaidHighlight } from "../utils/mathMermaidHighlight";
 import { disableMacosAutoSubstitution } from "../utils/disableMacosAutoSubstitution";
 
@@ -105,6 +106,7 @@ export default function EditorPane({
       wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
       ...disableMacosAutoSubstitution,
       spellcheckSuppression,
+      spellcheckTrigger,
       mathMermaidHighlight,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {

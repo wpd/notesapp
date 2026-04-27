@@ -64,8 +64,39 @@ character (`…`) **must not** appear.
 **Why it matters:** while we disable the macOS auto-substitutions above
 (via NSUserDefaults keys in `src-tauri/src/macos.rs`), visual
 spell-check — red underlines under misspelled words — must remain
-functional. The fix deliberately does not touch
-`WebContinuousSpellCheckingEnabled`.
+functional. `WebContinuousSpellCheckingEnabled` and
+`NSContinuousSpellCheckingEnabled` are set explicitly to `YES` in
+`disable_smart_substitutions()` because WKWebView embedded in a Tauri
+app does not enable continuous spell-checking by default.
+
+**Why squiggles only appear on previously-edited lines (now fixed):**
+WKWebView's spell checker fires only in response to keyboard input
+events, not programmatic DOM updates. CodeMirror loads document content
+via a Yjs sync operation (no keyboard events), so pre-existing content
+was never checked. The `spellcheckTrigger` extension
+(`src/utils/spellcheckTrigger.ts`) fixes this by briefly toggling the
+`spellcheck` attribute on the `contenteditable` after the document is
+first populated, and again (debounced) when the viewport changes due to
+scrolling. This forces WKWebView to rescan the entire visible content.
+
+**Automated coverage:**
+- `tests/unit/spellcheckTrigger.test.ts` — verifies the trigger fires
+  on document load (empty → non-empty) and on viewport change, and
+  debounces rapid scroll events.
+- `tests/e2e/app.e2e.ts` — "Spellcheck DOM attribute" — verifies the
+  CodeMirror `contenteditable` has `spellcheck="true"`.
+
+The visual red-squiggles checks below remain manual macOS-only steps.
+
+**Test 4a — squiggles appear on document open (not just on edited lines):**
+
+Open a note that already contains misspelled words (or create one,
+save it, close the app, and re-open it).
+
+**Expected:** red underlines appear beneath misspelled words immediately
+on open, without the user typing anything on those lines.
+
+**Test 4b — squiggles appear after typing:**
 
 **Input:** type a sentence with deliberate misspellings:
 
