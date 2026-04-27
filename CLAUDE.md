@@ -94,7 +94,10 @@ Actions CI. All three must exit 0 before a task is done. Never ask the
 user to manually verify behavior that a test could verify.
 
 - Testing strategy, layer responsibilities, naming: [`docs/TESTING.md`](docs/TESTING.md)
-- Linux-dev / macOS-prod split, WebKitGTK ↔ WKWebView policy, user-as-acceptance-tester workflow: [`docs/PLATFORM.md`](docs/PLATFORM.md)
+- Linux-dev / macOS-prod split, WebKitGTK ↔ WKWebView policy,
+  user-as-acceptance-tester workflow, **and the macOS-resident agent
+  workflow for issues that don't reproduce on Linux**:
+  [`docs/PLATFORM.md`](docs/PLATFORM.md)
 - Environment provisioning: `DEV_ENVIRONMENT.md` (repo root)
 
 ---
@@ -148,7 +151,11 @@ this list.
   or a broken `.notesapp/` structure, report the specific problem and
   let the user choose — do not overwrite, migrate, or delete.
 - **Never ask the user to manually test something** that a test could
-  verify.
+  verify. The exception is macOS behavior that is genuinely outside the
+  DOM and outside WebDriver's reach (spell-check squiggles, native
+  scrollbars, real Finder drag gestures, Keychain prompts) — these
+  belong in `MACOS_ACCEPTANCE_TESTS.md` with a precise checklist entry.
+  See `docs/PLATFORM.md` §4.3 for the layer-selection rules.
 - **Never use system fonts** — always use bundled JetBrains Mono / Inter.
 - **Never leave a `TODO` without filing it as a known issue** in
   `ISSUES.md`.
