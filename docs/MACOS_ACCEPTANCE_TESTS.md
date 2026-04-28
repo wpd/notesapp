@@ -85,6 +85,14 @@ scrolling. This forces WKWebView to rescan the entire visible content.
   debounces rapid scroll events.
 - `tests/e2e/app.e2e.ts` — "Spellcheck DOM attribute" — verifies the
   CodeMirror `contenteditable` has `spellcheck="true"`.
+- `tests/e2e/app.e2e.ts` — "Spellcheck load trigger on document open
+  (macOS only)" — verifies `retriggerSpellcheck()` is invoked (via
+  `MutationObserver` on the `spellcheck` attribute) when a document
+  with content is loaded into a tile. Guarded by
+  `process.platform !== "darwin"` so it is skipped on Linux. Currently
+  blocked from running automatically on macOS by ISSUE-003 (no macOS
+  E2E WebDriver infrastructure); will run automatically once that issue
+  is resolved.
 
 The visual red-squiggles checks below remain manual macOS-only steps.
 

@@ -23,6 +23,7 @@ import useProjectStore from "../stores/projectStore";
 import { notesAppTheme } from "../utils/editorTheme";
 import { spellcheckSuppression } from "../utils/spellcheckSuppression";
 import { spellcheckTrigger } from "../utils/spellcheckTrigger";
+import { spellingDecorations } from "../utils/spellingDecorations";
 import { mathMermaidHighlight } from "../utils/mathMermaidHighlight";
 import { disableMacosAutoSubstitution } from "../utils/disableMacosAutoSubstitution";
 
@@ -107,6 +108,7 @@ export default function EditorPane({
       ...disableMacosAutoSubstitution,
       spellcheckSuppression,
       spellcheckTrigger,
+      spellingDecorations,
       mathMermaidHighlight,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {

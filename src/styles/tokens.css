@@ -91,9 +91,10 @@
   --color-border-focus:  #CC785C;
 
   /* Semantic */
-  --color-error:         #DC2626;
-  --color-warning:       #D97706;
-  --color-success:       #16A34A;
+  --color-error:           #DC2626;
+  --color-warning:         #D97706;
+  --color-success:         #16A34A;
+  --color-spelling-error:  #FF3B30; /* matches macOS system red for spell squiggles */
 
   /* Typography */
   --font-editor:   'JetBrains Mono', monospace;

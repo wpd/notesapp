@@ -7,12 +7,17 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, ViewUpdate } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { spellcheckTrigger, SpellcheckTrigger } from "../../src/utils/spellcheckTrigger";
+import { spellingDecorations } from "../../src/utils/spellingDecorations";
+
+// Mock @tauri-apps/api/core so invoke() resolves immediately in jsdom.
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn().mockResolvedValue([]),
+}));
 
 // Build a minimal ViewUpdate mock with only the fields SpellcheckTrigger reads.
 function mockUpdate(opts: {
   docLength: number;
   prevDocLength?: number;
-  viewportChanged?: boolean;
   contentDOM?: HTMLElement;
 }): ViewUpdate {
   const el = opts.contentDOM ?? document.createElement("div");
@@ -20,22 +25,30 @@ function mockUpdate(opts: {
     docChanged: opts.prevDocLength !== undefined
       ? opts.docLength !== opts.prevDocLength
       : opts.docLength > 0,
-    viewportChanged: opts.viewportChanged ?? false,
-    state: { doc: { length: opts.docLength } },
-    view: { contentDOM: el },
+    viewportChanged: false,
+    state: { doc: { length: opts.docLength, toString: () => "mock content" } },
+    view: {
+      contentDOM: el,
+      dispatch: vi.fn(),
+      state: { doc: { length: opts.docLength, toString: () => "mock content" } },
+    },
   } as unknown as ViewUpdate;
 }
 
 // Build a minimal EditorView mock for the SpellcheckTrigger constructor.
 function mockView(docLength: number, el?: HTMLElement): EditorView {
   return {
-    state: { doc: { length: docLength } },
+    state: { doc: { length: docLength, toString: () => "mock content" } },
     contentDOM: el ?? document.createElement("div"),
+    dispatch: vi.fn(),
   } as unknown as EditorView;
 }
 
 function makeView(doc: string): EditorView {
-  const state = EditorState.create({ doc, extensions: [markdown(), spellcheckTrigger] });
+  const state = EditorState.create({
+    doc,
+    extensions: [markdown(), spellcheckTrigger, spellingDecorations],
+  });
   const parent = document.createElement("div");
   document.body.appendChild(parent);
   return new EditorView({ state, parent });
@@ -43,15 +56,9 @@ function makeView(doc: string): EditorView {
 
 describe("spellcheckTrigger", () => {
   let view: EditorView;
-  let rafSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    // Capture requestAnimationFrame calls so we can assert they were made
-    // without waiting for actual animation frames in jsdom.
-    rafSpy = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -59,112 +66,131 @@ describe("spellcheckTrigger", () => {
       view.destroy();
       view.dom.parentElement?.remove();
     }
-    rafSpy.mockRestore();
-    vi.useRealTimers();
   });
 
   describe("initial load trigger", () => {
-    it("triggers a spellcheck re-scan when the document is first populated", () => {
-      // Create editor with empty doc (simulates async load not yet complete).
+    it("calls check_spelling when the document is first populated", async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
       view = makeView("");
-      rafSpy.mockClear();
 
-      // Simulate yCollab populating the editor (empty → non-empty).
       view.dispatch({
         changes: { from: 0, to: 0, insert: "teh quikc brown fox" },
       });
 
-      // retriggerSpellcheck removes the attribute and calls rAF to re-add it.
-      expect(rafSpy).toHaveBeenCalledTimes(1);
-      // After rAF executes (mocked synchronously), spellcheck should be "true".
-      expect(view.contentDOM.getAttribute("spellcheck")).toBe("true");
+      // invoke is async; wait for the microtask queue to drain.
+      await vi.waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("check_spelling", {
+          text: "teh quikc brown fox",
+        });
+      });
     });
 
-    it("does not re-trigger on subsequent edits (only on the empty→non-empty transition)", () => {
+    it("does not call check_spelling on subsequent edits after load", async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
       view = makeView("");
-      // First population
+
+      // First population triggers the check.
       view.dispatch({ changes: { from: 0, to: 0, insert: "hello world" } });
-      rafSpy.mockClear();
+      await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+      vi.clearAllMocks();
 
-      // A normal user edit after load — must NOT re-trigger the full rescan.
+      // A normal user edit after load must NOT re-trigger.
       view.dispatch({ changes: { from: 11, to: 11, insert: " more text" } });
-      expect(rafSpy).not.toHaveBeenCalled();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(invoke).not.toHaveBeenCalled();
     });
 
-    it("does not trigger when the editor is created with content already present", () => {
-      // When the doc is non-empty at creation time there is no 0→N transition.
+    it("does not call check_spelling when the editor starts with content", async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
       view = makeView("already loaded content");
-      rafSpy.mockClear();
 
-      // A normal edit — no trigger expected.
+      // A normal edit on a non-empty doc should not trigger the load check.
       view.dispatch({ changes: { from: 0, to: 0, insert: "x" } });
-      expect(rafSpy).not.toHaveBeenCalled();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(invoke).not.toHaveBeenCalled();
     });
   });
 
-  // jsdom has no layout engine so view.dispatch({ scrollIntoView: true }) never
-  // sets update.viewportChanged.  Drive SpellcheckTrigger directly with mocks.
-  describe("scroll (viewport) trigger", () => {
-    it("schedules a re-scan when the viewport changes", () => {
+  describe("debounced re-check after edits", () => {
+    it("schedules a re-check when the document changes after load", async () => {
       vi.useFakeTimers();
-      const el = document.createElement("div");
-      // Construct with prevDocLength=0 so the load trigger fires on first update.
-      const plugin = new SpellcheckTrigger(mockView(0, el));
+      const { invoke } = await import("@tauri-apps/api/core");
+      view = makeView("");
 
-      // First update: empty→non-empty transition fires the load trigger.
-      plugin.update(mockUpdate({ docLength: 10, prevDocLength: 0, contentDOM: el }));
-      rafSpy.mockClear();
+      // Initial load
+      view.dispatch({ changes: { from: 0, to: 0, insert: "hello world" } });
+      await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+      vi.clearAllMocks();
 
-      // Simulate a viewport change (scroll).
-      plugin.update(mockUpdate({ docLength: 10, viewportChanged: true, contentDOM: el }));
+      // A subsequent edit should schedule a re-check
+      view.dispatch({ changes: { from: 5, to: 5, insert: "!" } });
+      expect(invoke).not.toHaveBeenCalled(); // not yet
 
-      // Before the debounce fires, rAF should not have been called yet.
-      expect(rafSpy).not.toHaveBeenCalled();
+      await vi.runAllTimersAsync();
+      expect(invoke).toHaveBeenCalledWith("check_spelling", expect.objectContaining({ text: expect.any(String) }));
 
-      // After the 300ms debounce, rAF should fire.
-      vi.advanceTimersByTime(300);
-      expect(rafSpy).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
     });
 
-    it("debounces rapid scroll events into a single re-scan", () => {
+    it("debounces rapid edits into a single re-check", async () => {
       vi.useFakeTimers();
-      const el = document.createElement("div");
-      const plugin = new SpellcheckTrigger(mockView(0, el));
+      const { invoke } = await import("@tauri-apps/api/core");
+      view = makeView("");
 
-      plugin.update(mockUpdate({ docLength: 10, prevDocLength: 0, contentDOM: el }));
-      rafSpy.mockClear();
+      view.dispatch({ changes: { from: 0, to: 0, insert: "hello" } });
+      await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+      vi.clearAllMocks();
 
-      // Simulate three rapid viewport changes.
-      for (let i = 0; i < 3; i++) {
-        plugin.update(mockUpdate({ docLength: 10, viewportChanged: true, contentDOM: el }));
-      }
+      // Three rapid edits
+      view.dispatch({ changes: { from: 5, to: 5, insert: " " } });
+      view.dispatch({ changes: { from: 6, to: 6, insert: "w" } });
+      view.dispatch({ changes: { from: 7, to: 7, insert: "o" } });
 
-      vi.advanceTimersByTime(300);
-      // All three scroll events should collapse into one rAF call.
-      expect(rafSpy).toHaveBeenCalledTimes(1);
+      await vi.runAllTimersAsync();
+      expect(invoke).toHaveBeenCalledTimes(1); // collapsed into one call
+
+      vi.useRealTimers();
     });
   });
 
-  describe("cleanup", () => {
-    it("cancels the scroll timer on destroy", () => {
+  describe("destroy", () => {
+    it("cancels the pending recheck timer on destroy", () => {
       vi.useFakeTimers();
       const clearSpy = vi.spyOn(globalThis, "clearTimeout");
       const el = document.createElement("div");
       const plugin = new SpellcheckTrigger(mockView(0, el));
 
-      // Fire the load trigger, then arm the scroll timer.
-      plugin.update(mockUpdate({ docLength: 10, prevDocLength: 0, contentDOM: el }));
-      rafSpy.mockClear();
-      plugin.update(mockUpdate({ docLength: 10, viewportChanged: true, contentDOM: el }));
+      // Trigger load check then a subsequent edit to arm the debounce timer.
+      plugin.update(mockUpdate({ docLength: 5, prevDocLength: 0, contentDOM: el }));
+      plugin.update({ ...mockUpdate({ docLength: 6, prevDocLength: 5, contentDOM: el }), docChanged: true } as ViewUpdate);
 
       plugin.destroy();
-
-      // clearTimeout should have been called to cancel the pending timer.
       expect(clearSpy).toHaveBeenCalled();
-      // rAF was NOT called after destroy.
-      expect(rafSpy).not.toHaveBeenCalled();
 
       clearSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it("prevents dispatch after the plugin is destroyed", async () => {
+      const el = document.createElement("div");
+      const dispatchMock = vi.fn();
+      const viewMock = {
+        state: { doc: { length: 0, toString: () => "" } },
+        contentDOM: el,
+        dispatch: dispatchMock,
+      } as unknown as EditorView;
+
+      const plugin = new SpellcheckTrigger(viewMock);
+      plugin.update({
+        docChanged: true,
+        viewportChanged: false,
+        state: { doc: { length: 5, toString: () => "hello" } },
+        view: viewMock,
+      } as unknown as ViewUpdate);
+
+      plugin.destroy();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(dispatchMock).not.toHaveBeenCalled();
     });
   });
 });

@@ -2,32 +2,41 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
+import { invoke } from "@tauri-apps/api/core";
 import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { setSpellingErrors } from "./spellingDecorations";
 
-const SCROLL_DEBOUNCE_MS = 300;
-
-// WebKit's continuous spell checker only fires in response to keyboard input
-// events, not programmatic DOM mutations. This means yCollab populating the
-// editor on document load — and CodeMirror creating fresh DOM nodes for newly
-// scrolled-into-view lines — both escape the checker entirely.
-//
-// Re-enabling spellcheck on a contenteditable element forces WebKit to rescan
-// the entire element's content. We briefly remove the attribute and re-add it
-// via two back-to-back requestAnimationFrame calls so WebKit sees the
-// transition. Direct DOM manipulation bypasses CodeMirror's contentAttributes
-// extension to avoid a race with its own attribute management cycle.
-function retriggerSpellcheck(el: HTMLElement): void {
-  el.removeAttribute("spellcheck");
-  requestAnimationFrame(() => {
-    el.setAttribute("spellcheck", "true");
-  });
+// Ask the Rust backend (NSSpellChecker on macOS) for all misspelled word
+// ranges in `text` and apply them as CodeMirror decorations.  Fire-and-forget:
+// the ViewPlugin's update() is synchronous so we return immediately and let
+// the dispatch happen when the Promise resolves.
+function checkSpellingAsync(view: EditorView, text: string, destroyed: () => boolean): void {
+  invoke<[number, number][]>("check_spelling", { text })
+    .then((ranges) => {
+      if (destroyed()) return;
+      try {
+        view.dispatch({
+          effects: setSpellingErrors.of(
+            ranges.map(([from, to]) => ({ from, to })),
+          ),
+        });
+      } catch {
+        // view was destroyed between the invoke and the dispatch
+      }
+    })
+    .catch(() => {
+      // non-macOS, command not registered, or the text contained a NUL byte
+    });
 }
+
+const RECHECK_DEBOUNCE_MS = 1500;
 
 // Exported so tests can instantiate directly and pass mock ViewUpdates,
 // since jsdom has no layout engine and never sets update.viewportChanged.
 export class SpellcheckTrigger {
   private prevDocLength: number;
-  private scrollTimer: ReturnType<typeof setTimeout> | null = null;
+  private _destroyed = false;
+  private recheckTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(view: EditorView) {
     // Initialise to the actual doc length so an editor created with pre-loaded
@@ -39,33 +48,41 @@ export class SpellcheckTrigger {
     const currentLength = update.state.doc.length;
 
     // Fire once when the document transitions from empty → non-empty (i.e.
-    // yCollab has just finished syncing the initial file content).
+    // yCollab has just finished syncing the initial file content).  Ask the
+    // system spell checker for all misspelled ranges and mark them.
     if (update.docChanged && this.prevDocLength === 0 && currentLength > 0) {
       this.prevDocLength = currentLength;
-      retriggerSpellcheck(update.view.contentDOM);
+      checkSpellingAsync(
+        update.view,
+        update.state.doc.toString(),
+        () => this._destroyed,
+      );
       return;
     }
     this.prevDocLength = currentLength;
 
-    // Re-fire (debounced) when the viewport changes: CodeMirror virtualizes
-    // rendering, so scrolling produces fresh DOM nodes that haven't been seen
-    // by the spell checker.
-    if (update.viewportChanged) {
-      if (this.scrollTimer !== null) {
-        clearTimeout(this.scrollTimer);
-      }
-      const el = update.view.contentDOM;
-      this.scrollTimer = setTimeout(() => {
-        this.scrollTimer = null;
-        retriggerSpellcheck(el);
-      }, SCROLL_DEBOUNCE_MS);
+    // After any subsequent edit, schedule a debounced full re-check so that
+    // corrections (typed or accepted from WKWebView's suggestion menu) are
+    // reflected once the user pauses.  spellingDecorations immediately clears
+    // marks in the edited range; this re-check restores marks for words that
+    // are still misspelled after the edit.
+    if (update.docChanged) {
+      if (this.recheckTimer !== null) clearTimeout(this.recheckTimer);
+      const view = update.view;
+      this.recheckTimer = setTimeout(() => {
+        this.recheckTimer = null;
+        if (!this._destroyed) {
+          checkSpellingAsync(view, view.state.doc.toString(), () => this._destroyed);
+        }
+      }, RECHECK_DEBOUNCE_MS);
     }
   }
 
   destroy(): void {
-    if (this.scrollTimer !== null) {
-      clearTimeout(this.scrollTimer);
-      this.scrollTimer = null;
+    this._destroyed = true;
+    if (this.recheckTimer !== null) {
+      clearTimeout(this.recheckTimer);
+      this.recheckTimer = null;
     }
   }
 }

@@ -62,4 +62,31 @@ project's files.
 
 ---
 
+## ISSUE-003 — macOS E2E infrastructure not yet available
+
+**Status:** Open
+
+**Symptom:** `npm run test:e2e` exits 0 on macOS with "⚠️ E2E TESTS SKIPPED —
+WebKitWebDriver not found." The E2E test suite (including the macOS-specific
+"Spellcheck load trigger" test in `tests/e2e/app.e2e.ts`) does not run on
+macOS.
+
+**Root cause:** The E2E infrastructure (`check-e2e-deps.js`, `wdio.conf.ts`)
+was written for Linux (WebKitGTK + `WebKitWebDriver`). The expected macOS path
+was `safaridriver` wrapped by `tauri-driver`, but `tauri-driver` reports "not
+supported on this platform" on macOS (Apple Silicon, 2026-04-27).
+
+**Workaround:** macOS-specific DOM-observable behaviours (spell-check trigger,
+smart-substitution prevention) are covered by unit tests and manual acceptance
+tests in `MACOS_ACCEPTANCE_TESTS.md`. The macOS-guarded E2E tests added to
+`app.e2e.ts` are `this.skip()`-ed on Linux and ready to run when a working
+macOS WebDriver path is established.
+
+**Unblocking:** investigate whether a newer `tauri-driver` release or an
+alternative approach (direct `safaridriver` with `TAURI_WEBVIEW_AUTOMATION`,
+custom WKWebView WebDriver bridge) supports Apple Silicon macOS. Track in
+`docs/PLATFORM.md` §4 when resolved.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

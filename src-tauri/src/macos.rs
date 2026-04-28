@@ -2,9 +2,77 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
+use objc2::encode::{Encode, Encoding, RefEncode};
 use objc2::runtime::{AnyObject, Bool};
 use objc2::{class, msg_send};
 use std::ffi::CStr;
+
+// NSRange mirrors the layout of Objective-C's NSRange struct.  The encoding
+// name "_NSRange" matches the ObjC runtime's type descriptor so msg_send! can
+// return and receive this struct by value.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NSRange {
+    pub location: usize,
+    pub length: usize,
+}
+
+unsafe impl Encode for NSRange {
+    const ENCODING: Encoding =
+        Encoding::Struct("_NSRange", &[usize::ENCODING, usize::ENCODING]);
+}
+
+unsafe impl RefEncode for NSRange {
+    const ENCODING_REF: Encoding = Encoding::Pointer(&Self::ENCODING);
+}
+
+const NS_NOT_FOUND: usize = usize::MAX;
+
+/// Return (from, to) character-position pairs for every misspelled word in
+/// `text`, using NSSpellChecker with the system's default language.  Positions
+/// are in NSString units (UTF-16 code units), which match JavaScript's string
+/// indexing for BMP text — i.e. the values can be used directly as CodeMirror
+/// document positions for English and most other languages.
+pub fn find_misspelled_ranges(text: &str) -> Vec<(usize, usize)> {
+    let Ok(c_text) = std::ffi::CString::new(text) else {
+        return vec![];
+    };
+    unsafe {
+        let null: *mut AnyObject = std::ptr::null_mut();
+        let wc_null: *mut isize = std::ptr::null_mut();
+
+        let checker: *mut AnyObject =
+            msg_send![class!(NSSpellChecker), sharedSpellChecker];
+        let ns_text: *mut AnyObject =
+            msg_send![class!(NSString), stringWithUTF8String: c_text.as_ptr()];
+        let ns_len: usize = msg_send![ns_text, length];
+
+        let mut results = Vec::new();
+        let mut search_from: usize = 0;
+
+        loop {
+            if search_from >= ns_len {
+                break;
+            }
+            let range: NSRange = msg_send![
+                checker,
+                checkSpellingOfString: ns_text
+                startingAt: search_from as isize
+                language: null
+                wrap: Bool::NO
+                inSpellDocumentWithTag: 0isize
+                wordCount: wc_null
+            ];
+            if range.length == 0 || range.location == NS_NOT_FOUND {
+                break;
+            }
+            let to = range.location.saturating_add(range.length);
+            results.push((range.location, to));
+            search_from = to;
+        }
+        results
+    }
+}
 
 // Set both NS* and Web* variants: different WKWebView/WebKit versions read
 // different key prefixes. Call this before tauri::Builder::default() so the

@@ -40,6 +40,7 @@ pub fn run() {
             commands::notes::create_note,
             commands::notes::file_exists,
             commands::watcher::start_file_watcher,
+            commands::spellcheck::check_spelling,
         ])
         .on_page_load(|window, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
