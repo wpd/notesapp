@@ -1,5 +1,4 @@
 {
-  "defaultMode": "bypassPermissions",
   "permissions": {
     "allow": [
       "Bash(cargo:*)",
@@ -35,10 +34,16 @@
       "Bash(env:*)",
       "Bash(which:*)",
       "Bash(chmod:*)",
-      "Bash(tauri-driver:*)"
+      "Bash(tauri-driver:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:cspell.org)",
+      "WebSearch",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [
       "Bash(sudo:*)"
     ]
-  }
+  },
+  "defaultMode": "bypassPermissions"
 }
