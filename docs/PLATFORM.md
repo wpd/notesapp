@@ -107,14 +107,41 @@ unreliable. These issues are owned by a **macOS-resident agent** —
 Claude Code or the VSCode Claude plugin running on the Mac itself,
 inside the cloned repository.
 
-### 4.1 Workflow
+### 4.1 Stop-Early Rule
+
+**Before investing any time diagnosing an issue, the Mac agent must
+answer one question: does this bug plausibly reproduce on Linux?**
+
+If the answer is yes — or even "probably" — stop immediately and tell
+the user:
+
+> "This issue is not macOS-specific. Route it to the VM agent, which
+> has better tooling for cross-platform debugging (E2E suite, WebKit
+> DevTools, faster iteration without a full macOS release build)."
+
+Code paths that are almost never macOS-specific and should be escalated
+without investigation:
+
+- Frontend TypeScript / React components
+- Zustand stores
+- The remark / rehype / KaTeX / Mermaid rendering pipeline
+- CodeMirror extensions (unless the symptom only appears in WKWebView)
+- Rust commands that have no `#[cfg(target_os = "macos")]` gate
+- File system operations, layout persistence, project loading
+
+The cost of a wrong escalation (user reroutes to VM agent, who confirms
+it's cross-platform) is low. The cost of the Mac agent spending an hour
+on a frontend rendering bug that the VM agent could fix in ten minutes
+is high.
+
+### 4.2 Workflow
 
 1. **User reports the macOS-specific issue to the Mac agent**, with
    reproduction steps and any visible symptoms.
 2. **Mac agent reproduces, diagnoses, fixes, and rebuilds** on the
    actual platform. There is no courier step. The agent iterates
    directly: edit, `npm run tauri build`, run, observe.
-3. **Mac agent adds regression coverage at the right layer** — see §4.3
+3. **Mac agent adds regression coverage at the right layer** — see §4.4
    for the layer-selection rules, which differ from §3 because
    automation reaches less of the macOS surface.
 4. **Mac agent commits and pushes.**
@@ -131,7 +158,7 @@ cause was NSTextInputContext substitution happening in AppKit, before
 the keystroke reached the webview at all. The VM cannot reproduce the
 cause, observe the cause, or validate a fix for the cause.
 
-### 4.2 What the Mac Agent Can and Cannot Observe
+### 4.3 What the Mac Agent Can and Cannot Observe
 
 The Mac agent has the following observation mechanisms available:
 
@@ -169,7 +196,7 @@ The Mac agent has the following observation mechanisms available:
 - Clicking "Allow" on macOS permission dialogs (Keychain access,
   accessibility, Gatekeeper). These need a human the first time.
 
-### 4.3 Verification Layer Selection on the Mac
+### 4.4 Verification Layer Selection on the Mac
 
 Because automation does not reach the full macOS surface, the Mac
 agent's regression coverage uses a slightly different layering than
@@ -198,7 +225,7 @@ belongs there, it states the reason explicitly (e.g., "squiggles are
 rendered by WKWebView outside the DOM and cannot be inspected via
 WebDriver"). The user then runs the listed steps and reports back.
 
-### 4.4 The Achievable Goal
+### 4.5 The Achievable Goal
 
 The realistic division of labor on a macOS-specific issue:
 
