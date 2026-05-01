@@ -36,5 +36,8 @@ notify-debouncer-mini = "0.5"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5"
 
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+spellbook = "0.4"
+
 [dev-dependencies]
 tempfile = "3"

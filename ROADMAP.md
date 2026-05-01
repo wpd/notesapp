@@ -197,7 +197,7 @@ deviations from the spec:
       bar when unsaved
 - [x] Autosave of the Y.Doc to `<filename>.tmp` every 30 seconds
       (SPEC.md §9.1)
-- [x] OS spellcheck enabled (native webview spellcheck)
+- [x] Spellcheck enabled (NSSpellChecker on macOS, spellbook/Hunspell on Linux)
 - [x] Spellcheck suppressed inside fenced code blocks and LaTeX blocks
 - [x] Live word + character count in status bar below editor
 

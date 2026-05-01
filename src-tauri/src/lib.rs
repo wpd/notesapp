@@ -8,6 +8,8 @@ pub mod fs;
 pub mod watcher;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(all(unix, not(target_os = "macos")))]
+mod linux_spell;
 
 pub use error::AppError;
 

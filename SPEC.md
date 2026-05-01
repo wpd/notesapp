@@ -460,7 +460,7 @@ The editor must implement Emacs keybindings via CodeMirror 6's `@codemirror/lang
 4. **All other contexts:** TAB inserts spaces to indent the current line to the next stop, matching the indentation level of the previous non-blank line. Default indent width: 4 spaces (configurable).
 
 **Spellcheck and writing assistance:**
-- The OS/webview native spellcheck is enabled by default in the editor (red underlines on misspelled words; right-click for OS suggestions).
+- Spellcheck is enabled by default in the editor (red wavy underlines on misspelled words). The check runs in-process in Rust — `NSSpellChecker` on macOS, `spellbook` (Hunspell-compatible, pure Rust) on Linux backed by the system's `hunspell-en-us` dictionary — and underlines are rendered as CodeMirror decorations. This deviates from the original "use the webview native checker" intent because WKWebView's native checker fires only on keyboard input events, not on the programmatic content load that yCollab performs for every document open. Right-click "Suggestions" menu is deferred (see ISSUES.md).
 - Optionally, [LanguageTool](https://languagetool.org/) can be run as a local background process (no cloud) for grammar and style suggestions beyond spelling. Enabled in `config.toml`; the app checks at startup whether `languagetool-server` is available on `$PATH`.
 - Spellcheck is suppressed inside fenced code blocks, LaTeX blocks, and Mermaid blocks.
 

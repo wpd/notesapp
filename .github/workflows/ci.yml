@@ -29,6 +29,7 @@ jobs:
             xvfb \
             x11-utils \
             webkit2gtk-driver \
+            hunspell-en-us \
             dbus-x11
 
       - name: Setup Rust

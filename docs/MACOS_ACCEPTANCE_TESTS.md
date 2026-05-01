@@ -62,57 +62,45 @@ character (`…`) **must not** appear.
 ## Test 4 — Spell-check still works
 
 **Why it matters:** while we disable the macOS auto-substitutions above
-(via NSUserDefaults keys in `src-tauri/src/macos.rs`), visual
-spell-check — red underlines under misspelled words — must remain
-functional. `WebContinuousSpellCheckingEnabled` and
-`NSContinuousSpellCheckingEnabled` are set explicitly to `YES` in
-`disable_smart_substitutions()` because WKWebView embedded in a Tauri
-app does not enable continuous spell-checking by default.
+(via NSUserDefaults keys in `src-tauri/src/macos.rs`), spell-check —
+red wavy underlines under misspelled words — must remain functional.
 
-**Why squiggles only appear on previously-edited lines (now fixed):**
-WKWebView's spell checker fires only in response to keyboard input
-events, not programmatic DOM updates. CodeMirror loads document content
-via a Yjs sync operation (no keyboard events), so pre-existing content
-was never checked. The `spellcheckTrigger` extension
-(`src/utils/spellcheckTrigger.ts`) fixes this by briefly toggling the
-`spellcheck` attribute on the `contenteditable` after the document is
-first populated, and again (debounced) when the viewport changes due to
-scrolling. This forces WKWebView to rescan the entire visible content.
+**Implementation note:** spellcheck is no longer handled by WKWebView's
+native checker. Instead, `spellcheckTrigger` (`src/utils/spellcheckTrigger.ts`)
+invokes `check_spelling` (a Rust Tauri command) on the empty→non-empty
+document-load transition and after each edit (debounced). On macOS the Rust
+backend calls `NSSpellChecker`; on Linux it uses `spellbook` (Hunspell).
+Results are rendered as CodeMirror `.cm-spelling-error` decorations. This
+approach was necessary because WKWebView's native checker fires only on
+keyboard input events, not on the programmatic content load that yCollab
+performs for every document open.
 
 **Automated coverage:**
-- `tests/unit/spellcheckTrigger.test.ts` — verifies the trigger fires
-  on document load (empty → non-empty) and on viewport change, and
-  debounces rapid scroll events.
-- `tests/e2e/app.e2e.ts` — "Spellcheck DOM attribute" — verifies the
-  CodeMirror `contenteditable` has `spellcheck="true"`.
-- `tests/e2e/app.e2e.ts` — "Spellcheck load trigger on document open
-  (macOS only)" — verifies `retriggerSpellcheck()` is invoked (via
-  `MutationObserver` on the `spellcheck` attribute) when a document
-  with content is loaded into a tile. Guarded by
-  `process.platform !== "darwin"` so it is skipped on Linux. Currently
-  blocked from running automatically on macOS by ISSUE-003 (no macOS
-  E2E WebDriver infrastructure); will run automatically once that issue
-  is resolved.
+- `tests/unit/spellcheckTrigger.test.ts` — verifies `invoke("check_spelling")`
+  is called on the empty→non-empty load transition and is debounced on
+  subsequent edits.
+- `tests/e2e/app.e2e.ts` — "Spellcheck DOM attribute" — verifies
+  `spellcheck="true"` is set on the CodeMirror `contenteditable`.
+- `tests/e2e/app.e2e.ts` — "Spelling decorations render on misspelled
+  words" — opens `spellcheck.md` (fixture with deliberate misspellings),
+  waits for the async IPC round-trip, and asserts that `.cm-spelling-error`
+  spans appear in the DOM. Runs on both Linux and macOS (blocked on macOS
+  by ISSUE-003 until E2E infrastructure is available there).
 
-The visual red-squiggles checks below remain manual macOS-only steps.
+**Test 4 — manual macOS check (visual confirmation only):**
 
-**Test 4a — squiggles appear on document open (not just on edited lines):**
-
-Open a note that already contains misspelled words (or create one,
-save it, close the app, and re-open it).
-
-**Expected:** red underlines appear beneath misspelled words immediately
-on open, without the user typing anything on those lines.
-
-**Test 4b — squiggles appear after typing:**
+The automated tests above verify the mechanics. This manual step
+confirms that NSSpellChecker is returning correct ranges for real content.
 
 **Input:** type a sentence with deliberate misspellings:
 
     teh quikc brown fox
 
-**Expected:** red underlines appear beneath `teh` and `quikc`. The
-underlines are rendered by WKWebView as an overlay and are not part of
-the document text.
+**Expected:** red wavy underlines appear beneath `teh` and `quikc`.
+Note: words in NSSpellChecker's autocorrect database (e.g. `teh`) may
+not be underlined if NSSpellChecker auto-corrects them before flagging —
+this is a known NSSpellChecker API limitation. Use `quikc` as the
+primary test word.
 
 ---
 

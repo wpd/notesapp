@@ -194,68 +194,28 @@ describe("Spellcheck DOM attribute", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Spellcheck load trigger (macOS only)
+// Spelling decorations (cross-platform)
 // ---------------------------------------------------------------------------
 
-describe("Spellcheck load trigger on document open (macOS only)", () => {
-  it("fires retriggerSpellcheck when a document with content is loaded", async function () {
-    if (process.platform !== "darwin") {
-      this.skip();
-      return;
-    }
-
-    // Install MutationObserver before triggering document load.
-    await browser.execute(() => {
-      type Win = Window & {
-        __spellcheckMutations__?: string[];
-        __spellcheckObserver__?: MutationObserver;
-      };
-      const win = window as Win;
-      win.__spellcheckMutations__ = [];
-      const el = document.querySelector(".cm-content");
-      if (!el) return;
-      const observer = new MutationObserver((mutations) => {
-        for (const m of mutations) {
-          if (m.type === "attributes" && m.attributeName === "spellcheck") {
-            win.__spellcheckMutations__!.push(
-              (m.target as HTMLElement).getAttribute("spellcheck") ?? "removed",
-            );
-          }
-        }
-      });
-      observer.observe(el, { attributes: true, attributeFilter: ["spellcheck"] });
-      win.__spellcheckObserver__ = observer;
-    });
-
-    // Switch to beta.md via the buffer switcher. beta.md has content in the
-    // test fixture, so loading it triggers the empty→non-empty load transition
-    // in SpellcheckTrigger, which calls retriggerSpellcheck().
-    await clickById("app-root");
+describe("Spelling decorations render on misspelled words", () => {
+  it("cm-spelling-error spans appear after loading a note with misspellings", async function () {
+    // Ensure an editor tile is focused before invoking the buffer switcher.
+    await clickFirstTileOfType("editor");
     await sendCxChord("b");
     const switcher = await waitForId("buffer-switcher", 3000);
     await expect(switcher).toBeDisplayed();
     const input = await byId("buffer-switcher-input");
-    await input.setValue("beta");
-    await browser.pause(200);
+    await input.setValue("spellcheck");
+    await browser.pause(300);
     await browser.action("key").down(KEY.RETURN).up(KEY.RETURN).perform();
 
-    // Allow time for yCollab to sync content and requestAnimationFrame to fire.
-    await browser.pause(700);
+    // Wait for: buffer-switcher pre-load + IPC round-trip (check_spelling) + CodeMirror dispatch.
+    await browser.pause(3000);
 
-    // Read and disconnect the observer.
-    const mutations = await browser.execute(() => {
-      type Win = Window & {
-        __spellcheckMutations__?: string[];
-        __spellcheckObserver__?: MutationObserver;
-      };
-      const win = window as Win;
-      win.__spellcheckObserver__?.disconnect();
-      return win.__spellcheckMutations__ ?? [];
-    });
-
-    // retriggerSpellcheck() removes the attribute then re-adds it via rAF.
-    // We expect at least one mutation (the re-add to "true" after the remove).
-    expect(mutations.length).toBeGreaterThan(0);
+    const errorCount = await browser.execute(
+      () => document.querySelectorAll(".cm-spelling-error").length,
+    );
+    expect(errorCount).toBeGreaterThan(0);
   });
 });
 

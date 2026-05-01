@@ -89,4 +89,49 @@ custom WKWebView WebDriver bridge) supports Apple Silicon macOS. Track in
 
 ---
 
+## ISSUE-004 — Spellcheck right-click "Suggestions" menu not implemented
+
+**Status:** Open
+
+**Symptom:** SPEC.md §4.4 originally called for right-clicking a misspelled
+word to show OS spell-check suggestions. No such context menu exists.
+
+**Background:** The spellcheck implementation shifted from the webview native
+checker (which would have provided this for free) to a Rust-side
+NSSpellChecker / spellbook approach that renders CodeMirror decorations.
+The suggestion menu was not part of that change.
+
+**Workaround:** None. The red underline marks misspelled words but offers no
+correction UI.
+
+**Resolution path:** Add a CodeMirror context-menu extension that (a) detects
+a click on a `.cm-spelling-error` span, (b) invokes a new Tauri command
+`suggest_spellings(word)` backed by `NSSpellChecker.guesses` on macOS and
+`spellbook::Suggester` on Linux, and (c) renders suggestions in a floating
+menu.
+
+---
+
+## ISSUE-005 — Process note: b42371e deviated from SPEC §4.4 without flagging
+
+**Status:** Closed (retrospective record)
+
+**Background:** Commit `b42371e` ("Fix macOS spell-check for pre-loaded content
+via NSSpellChecker + CodeMirror decorations") replaced the "OS/webview native
+spellcheck" called for in SPEC.md §4.4 with a Rust-side implementation.  The
+engineering trade-off was sound (WKWebView's native checker fires only on
+keyboard events, not on yCollab's programmatic content load), but the commit
+did not update SPEC.md or flag the deviation per CLAUDE.md §6/§7.  This was
+caught and corrected when Linux spell-check was later found never to have
+worked, prompting a review.
+
+**Fix applied:** SPEC.md §4.4 and ROADMAP.md updated to reflect the in-process
+Rust implementation. Linux spellcheck restored via `spellbook` + the same
+CodeMirror decoration pipeline already used on macOS.
+
+**Lesson:** Any commit that deviates from SPEC.md must update the spec and/or
+call out the deviation in the commit message and ISSUES.md, per CLAUDE.md §7.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

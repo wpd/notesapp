@@ -255,6 +255,12 @@ export const config: WebdriverIO.Config = {
         "```",
       ].join("\n") + "\n",
     );
+    // Fixture for spell-check decoration tests — contains deliberate misspellings
+    // that spellbook (Linux) and NSSpellChecker (macOS) should flag.
+    fs.writeFileSync(
+      path.join(notesDir, "spellcheck.md"),
+      "# Spellcheck Test\n\nteh quikc brown fox jumps ovver the lazy dog.\n",
+    );
     // Create minimal project.toml
     fs.writeFileSync(
       path.join(notesAppDir, "project.toml"),

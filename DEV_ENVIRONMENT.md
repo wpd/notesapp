@@ -49,6 +49,7 @@ sudo apt update && sudo apt install -y \
   xvfb \
   x11-utils \
   webkit2gtk-driver \
+  hunspell-en-us \
   ca-certificates \
   gnupg \
   lsb-release
@@ -60,6 +61,8 @@ sudo apt update && sudo apt install -y \
 > - `x11-utils`: provides `xdpyinfo` and other display diagnostic tools
 > - `webkit2gtk-driver`: provides the `WebKitWebDriver` binary — required by `tauri-driver`
 >   for E2E tests on Linux; without it `npm run test:e2e` skips with a warning
+> - `hunspell-en-us`: spell-check dictionary — required for the spellcheck feature and the
+>   E2E "Spelling decorations" test; spellbook searches `/usr/share/hunspell/` at runtime
 > - `build-essential`: C/C++ toolchain required by some Rust crates and Node native addons
 
 ### 3.2 GitHub CLI (`gh`)
@@ -388,6 +391,7 @@ You should not need to manage Xvfb manually.
 | Python 3 | 3.10 | apt (system) |
 | libwebkit2gtk | 4.1 | apt |
 | webkit2gtk-driver | (matches libwebkit2gtk) | apt — **required for E2E tests** |
+| hunspell-en-us | any | apt — **required for spellcheck + E2E spelling test** |
 | Xvfb | any | apt |
 | Chrome | any recent | pre-installed |
 | Claude Code | latest | pre-installed |

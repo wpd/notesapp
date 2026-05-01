@@ -42,6 +42,13 @@ export class SpellcheckTrigger {
     // Initialise to the actual doc length so an editor created with pre-loaded
     // content doesn't mis-fire the load trigger on the very first user edit.
     this.prevDocLength = view.state.doc.length;
+    // When the editor is opened with content already in the Y.Doc (e.g. the
+    // buffer switcher pre-populates the Y.Doc before switching the tile), the
+    // empty→non-empty update() transition never fires.  Fire an immediate check
+    // so that squiggles appear on document open, not only after the first edit.
+    if (view.state.doc.length > 0) {
+      checkSpellingAsync(view, view.state.doc.toString(), () => this._destroyed);
+    }
   }
 
   update(update: ViewUpdate): void {

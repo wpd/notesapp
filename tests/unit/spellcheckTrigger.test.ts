@@ -54,6 +54,8 @@ function makeView(doc: string): EditorView {
   return new EditorView({ state, parent });
 }
 
+// SpellcheckTrigger calls invoke("check_spelling") on all platforms.
+// The mock returns [] here; the Rust backend provides real ranges in production.
 describe("spellcheckTrigger", () => {
   let view: EditorView;
 
@@ -100,11 +102,20 @@ describe("spellcheckTrigger", () => {
       expect(invoke).not.toHaveBeenCalled();
     });
 
-    it("does not call check_spelling when the editor starts with content", async () => {
+    it("calls check_spelling immediately when the editor starts with pre-loaded content", async () => {
       const { invoke } = await import("@tauri-apps/api/core");
       view = makeView("already loaded content");
 
-      // A normal edit on a non-empty doc should not trigger the load check.
+      // The constructor fires an immediate check for pre-loaded content (buffer
+      // switcher pre-populates the Y.Doc before switching the tile).
+      await vi.waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("check_spelling", {
+          text: "already loaded content",
+        });
+      });
+      vi.clearAllMocks();
+
+      // A subsequent edit should NOT re-trigger immediately (relies on debounce).
       view.dispatch({ changes: { from: 0, to: 0, insert: "x" } });
       await new Promise((r) => setTimeout(r, 20));
       expect(invoke).not.toHaveBeenCalled();
