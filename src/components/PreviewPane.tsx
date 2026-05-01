@@ -90,10 +90,14 @@ export default function PreviewPane({
   }, [ydocs, filePath, renderContent]);
 
   // After React commits the new HTML, render Mermaid code blocks as SVG.
+  // The cancellation token prevents a stale render from writing to a <pre>
+  // that React has already detached via dangerouslySetInnerHTML reset.
   useEffect(() => {
     if (!contentRef.current || !html) return;
     const el = contentRef.current;
-    void renderMermaidBlocks(el);
+    let cancelled = false;
+    void renderMermaidBlocks(el, () => cancelled);
+    return () => { cancelled = true; };
   }, [html]);
 
   // Best-effort scroll-sync with Editor cursor

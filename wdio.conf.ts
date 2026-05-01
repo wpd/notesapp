@@ -193,6 +193,68 @@ export const config: WebdriverIO.Config = {
     fs.writeFileSync(path.join(notesDir, "alpha.md"), "# Alpha Note\n\nThis is the alpha note.\n");
     fs.writeFileSync(path.join(notesDir, "beta.md"), "# Beta Note\n\nThis is the beta note.\n");
     fs.writeFileSync(path.join(notesDir, "gamma.md"), "# Gamma Note\n\nThis is the gamma note.\n");
+    // Fixture for Mermaid rendering tests — long preamble before the diagram
+    // so that renderMarkdown() takes non-trivial time, matching the user's
+    // real note which has substantial content above the mermaid block.
+    fs.writeFileSync(
+      path.join(notesDir, "mermaid.md"),
+      [
+        "# Mermaid Rendering Test",
+        "",
+        "This note tests that a fenced mermaid block is rendered as an SVG diagram.",
+        "There is deliberately a lot of content above the diagram so that the async",
+        "renderMarkdown pipeline takes long enough to widen the race window between",
+        "the `setHtml` React state update and the `mermaid.render()` await.",
+        "",
+        "## Section 1 — Background",
+        "",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor",
+        "incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis",
+        "nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+        "",
+        "## Section 2 — Test Cases",
+        "",
+        "**Test A** — expected: diagram renders on document open (not on typing).",
+        "",
+        "> Expected: the SVG appears immediately after the note opens in Preview.",
+        "> Input: A note with a single fenced mermaid block.",
+        "> Observed: the fenced code block is replaced with an SVG diagram.",
+        "",
+        "**Text B** — squiggles appear after typing.",
+        "",
+        "> Expected: no squiggles on diagram source inside fences.",
+        "> Input: graph TD syntax is not natural language.",
+        "> Observed: diagram renders without spell-check decorations.",
+        "",
+        "**Text C** — squiggles appear on document open.",
+        "",
+        "> Expected: red underlines appear beneath misspelled words (if any) in",
+        "> create-some, close it, open the app, re-open it).",
+        "",
+        "**Text D** — squiggles disappear after typing.",
+        "",
+        "> Expected: the diagram contains no deliberate misspellings.",
+        "",
+        "## Section 3 — Notes on Implementation",
+        "",
+        "The mermaid rendering pipeline is: `renderMarkdown` produces",
+        "`<pre><code class=\"language-mermaid\">...</code></pre>` and",
+        "`renderMermaidBlocks` replaces it with a `<div class=\"mermaid-container\">`",
+        "containing the SVG from `mermaid.render()`.",
+        "",
+        "Here is the same diagram outside a fenced fence (known to be incorrect,",
+        "included only to verify that unfenced content renders as plain text):",
+        "",
+        "graph TD A[Start] --> B[End]",
+        "",
+        "## Section 4 — Diagram",
+        "",
+        "```mermaid",
+        "graph TD",
+        "    A[Start] --> B[End]",
+        "```",
+      ].join("\n") + "\n",
+    );
     // Create minimal project.toml
     fs.writeFileSync(
       path.join(notesAppDir, "project.toml"),
@@ -206,13 +268,14 @@ export const config: WebdriverIO.Config = {
     // 1. Start the Tauri app with WebKit remote-inspection and automation enabled.
     // Use 'pipe' for stdout so we can watch for the NOTESAPP_PAGE_LOADED marker
     // that lib.rs emits via on_page_load when the webview finishes loading.
+    // WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS is intentionally omitted so
+    // tests run in the same sandboxed context the user experiences in dev mode.
     appProcess = spawn(APPLICATION, [], {
       env: {
         ...process.env,
         WEBKIT_INSPECTOR_SERVER: `127.0.0.1:${WEBKIT_INSPECTION_PORT}`,
         TAURI_WEBVIEW_AUTOMATION: "true",
         WEBKIT_DISABLE_DMABUF_RENDERER: "1",
-        WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1",
         LIBGL_ALWAYS_SOFTWARE: "1",
         NOTESAPP_PROJECT_DIR: testProjectDir,
       },

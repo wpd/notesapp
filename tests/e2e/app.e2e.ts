@@ -1842,6 +1842,66 @@ describe("Drag from Explorer onto tile rebinds", () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Mermaid diagram rendering in Preview pane (SPEC.md §3.x rendering pipeline)
+//
+// Loads a fixture note containing a fenced ```mermaid block, binds a Preview
+// tile to it, and asserts that the rendered SVG appears in the DOM.
+// This test catches the class-of-bugs where mermaid.render() throws silently
+// (DOMPurify issues, dynamic-import failures, etc.) and the preview shows
+// either a raw <pre> block or a .mermaid-error div instead of an SVG.
+// ---------------------------------------------------------------------------
+
+describe("Mermaid diagram rendering in Preview", () => {
+  before(async () => {
+    // Dismiss any leftover overlay before the suite runs.
+    await browser.execute(() => {
+      const overlay = document.querySelector('[data-testid="buffer-switcher-overlay"]');
+      if (overlay?.parentNode) overlay.parentNode.removeChild(overlay);
+    });
+  });
+
+  it("renders a fenced mermaid block as an SVG diagram (no .mermaid-error)", async () => {
+    // Find a preview tile and bind it to the mermaid fixture note via C-x b.
+    await clickFirstTileOfType("preview");
+    await browser.pause(200);
+
+    await sendCxChord("b");
+    const switcher = await waitForId("buffer-switcher", 3000);
+    await expect(switcher).toBeDisplayed();
+
+    const input = await byId("buffer-switcher-input");
+    await input.clearValue();
+    await input.setValue("mermaid");
+    await browser.pause(300);
+    await browser.action("key").down(KEY.RETURN).up(KEY.RETURN).perform();
+    // Wait for: debounce (150ms) + mermaid.render() (variable) + React commit.
+    await browser.pause(800);
+
+    // The mermaid.render() call is async; wait up to 5s for the SVG to appear.
+    // We use XPath (live DOM protocol) rather than browser.execute (stale context).
+    const mermaidSvg = $('//*[contains(@class,"mermaid-container")]//*[local-name()="svg"]');
+    await mermaidSvg.waitForExist({
+      timeout: 5000,
+      timeoutMsg: "Expected .mermaid-container > svg to appear in the preview within 5s — mermaid.render() may have failed",
+    });
+    await expect(mermaidSvg).toBeDisplayed();
+
+    // Confirm there is NO .mermaid-error div — a present error div means
+    // mermaid.render() threw and the block was replaced with an error message.
+    const hasError = await browser.execute(() => {
+      return !!document.querySelector(".mermaid-error");
+    });
+    expect(hasError).toBe(false);
+
+    // Confirm the raw fenced code block is gone (it was replaced).
+    const hasRawBlock = await browser.execute(() => {
+      return !!document.querySelector("code.language-mermaid");
+    });
+    expect(hasRawBlock).toBe(false);
+  });
+});
+
 // Layout persistence — kept LAST so its assertions are not perturbed by the
 // dynamic file-add / file-delete scenarios above.
 // ---------------------------------------------------------------------------
