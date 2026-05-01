@@ -216,6 +216,23 @@ describe("Spelling decorations render on misspelled words", () => {
       () => document.querySelectorAll(".cm-spelling-error").length,
     );
     expect(errorCount).toBeGreaterThan(0);
+
+    // Verify computed styles: WebKitGTK 4.1 silently drops text-decoration-line
+    // when the three-value shorthand (line + style + color) is used — assert
+    // all three longhand properties resolve correctly.
+    const spanStyle = await browser.execute(() => {
+      const span = document.querySelector(".cm-spelling-error") as HTMLElement | null;
+      if (!span) return null;
+      const cs = window.getComputedStyle(span);
+      return {
+        line:  cs.getPropertyValue("text-decoration-line"),
+        style: cs.getPropertyValue("text-decoration-style"),
+        color: cs.getPropertyValue("text-decoration-color"),
+      };
+    });
+    expect(spanStyle).not.toBeNull();
+    expect(spanStyle?.line).toBe("underline");
+    expect(spanStyle?.style).toBe("wavy");
   });
 });
 

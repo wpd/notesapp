@@ -241,6 +241,11 @@ body,
 /* ------------------------------------------------------------------ */
 
 .cm-spelling-error {
-  text-decoration: underline wavy var(--color-spelling-error);
+  /* Use longhand properties: WebKitGTK 4.1 does not parse the three-value
+     text-decoration shorthand (line + style + color) and silently drops the
+     text-decoration-line component, leaving no underline at all. */
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--color-spelling-error);
   text-decoration-skip-ink: none;
 }
