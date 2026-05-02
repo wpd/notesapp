@@ -53,6 +53,7 @@ export default function EditorPane({
   } = useEditorStore();
   const { focusTile, setTileMissing } = useLayoutStore();
   const wordWrap = useLayoutStore((s) => s.wordWrap[tileId] ?? true);
+  const focusedTileId = useLayoutStore((s) => s.focusedTileId);
 
   // Load file content into the Y.Doc when filePath changes.
   useEffect(() => {
@@ -191,6 +192,14 @@ export default function EditorPane({
       ),
     });
   }, [wordWrap]);
+
+  // Push DOM focus into this editor when the layout store targets this tile.
+  // Without this, C-x N / C-x o only update store state and typing goes nowhere.
+  useEffect(() => {
+    if (focusedTileId === tileId && viewRef.current) {
+      viewRef.current.focus();
+    }
+  }, [focusedTileId, tileId]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

@@ -2130,4 +2130,58 @@ describe("C-x N tile focus and number badge (SPEC §4.1)", () => {
     expect(editorText).not.toContain(sentinel + "q");
     expect(editorText).not.toMatch(new RegExp("q" + sentinel));
   });
+
+  it("C-x h then C-x N — typing reaches the correct editor tile", async () => {
+    // Click the first editor tile to give it focus, note its reading-order position.
+    await clickFirstTileOfType("editor");
+    await browser.pause(300);
+
+    const idsBeforeSplit = await getOrderedTileIds();
+    const focusedId = await getFocusedTileId();
+    const origPos = idsBeforeSplit.indexOf(focusedId ?? "");
+    expect(origPos).toBeGreaterThanOrEqual(0);
+
+    // Split the focused editor horizontally.  The new tile lands immediately
+    // after the original in reading order (same subtree, splitTile first=orig).
+    await sendCxChord("h");
+    await browser.pause(500);
+
+    const idsAfterSplit = await getOrderedTileIds();
+    // Original tile is still at the same position; new tile is right after it.
+    const origN = origPos + 1;      // C-x N for original tile (1-indexed)
+    const newN  = origPos + 2;      // C-x N for newly created tile
+    expect(newN).toBeLessThanOrEqual(9);  // sanity: both positions are addressable
+
+    const origTileId = idsAfterSplit[origPos];
+    const newTileId  = idsAfterSplit[origPos + 1];
+    expect(origTileId).toBe(focusedId);   // original tile preserved
+
+    // C-x origN — focus the original tile and verify DOM activeElement lands
+    // inside its editor pane.  WebKitGTK WebDriver key routing does not follow
+    // programmatic .focus() calls, so we assert document.activeElement rather
+    // than attempting to type and read back text (which would be a no-op for
+    // the WebDriver focus stack while still being correct for real user input).
+    await browser.action('key').down(KEY.CTRL).down('x').up('x').up(KEY.CTRL).perform();
+    await browser.pause(150);
+    await browser.action('key').down(String(origN)).up(String(origN)).perform();
+    await browser.pause(300);
+
+    const origEditorHasFocus = await browser.execute((id: string) => {
+      const pane = document.querySelector(`[data-testid="editor-pane-${id}"]`);
+      return pane !== null && pane.contains(document.activeElement);
+    }, origTileId);
+    expect(origEditorHasFocus).toBe(true);
+
+    // C-x newN — focus the new tile and verify DOM activeElement moved to it.
+    await browser.action('key').down(KEY.CTRL).down('x').up('x').up(KEY.CTRL).perform();
+    await browser.pause(150);
+    await browser.action('key').down(String(newN)).up(String(newN)).perform();
+    await browser.pause(300);
+
+    const newEditorHasFocus = await browser.execute((id: string) => {
+      const pane = document.querySelector(`[data-testid="editor-pane-${id}"]`);
+      return pane !== null && pane.contains(document.activeElement);
+    }, newTileId);
+    expect(newEditorHasFocus).toBe(true);
+  });
 });

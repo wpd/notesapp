@@ -13,6 +13,16 @@ interface ShortcutOptions {
   onModeSwitch: (tileId: string, mode: TileMode) => void;
 }
 
+// Synchronously push DOM focus into the CodeMirror editor for a given tileId.
+// useEffect in EditorPane is async (runs after paint) and races with keystrokes
+// fired immediately after a chord — this direct DOM query runs before any React
+// scheduling and is therefore guaranteed to arrive before subsequent keydowns.
+function focusEditorDom(tileId: string): void {
+  const pane = document.querySelector(`[data-testid="editor-pane-${tileId}"]`);
+  const cm = pane?.querySelector<HTMLElement>(".cm-content");
+  cm?.focus();
+}
+
 export function useKeyboardShortcuts({
   onOpenBufferSwitcher,
   onOpenFindFile,
@@ -111,6 +121,7 @@ export function useKeyboardShortcuts({
         case e.key === "o" && !e.ctrlKey && !e.shiftKey: {
           e.preventDefault();
           layout.focusNextTile();
+          { const next = useLayoutStore.getState().focusedTileId; if (next) focusEditorDom(next); }
           break;
         }
 
@@ -118,6 +129,7 @@ export function useKeyboardShortcuts({
         case e.key === "O" && !e.ctrlKey: {
           e.preventDefault();
           layout.focusPrevTile();
+          { const prev = useLayoutStore.getState().focusedTileId; if (prev) focusEditorDom(prev); }
           break;
         }
 
@@ -208,7 +220,10 @@ export function useKeyboardShortcuts({
           e.preventDefault();
           const ids = layout.getOrderedTileIds();
           const idx = Number(e.key) - 1;
-          if (idx < ids.length) layout.focusTile(ids[idx]);
+          if (idx < ids.length) {
+            layout.focusTile(ids[idx]);
+            focusEditorDom(ids[idx]);
+          }
           break;
         }
 
