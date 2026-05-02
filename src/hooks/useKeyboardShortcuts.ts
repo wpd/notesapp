@@ -11,6 +11,7 @@ interface ShortcutOptions {
   onOpenBufferSwitcher: (tileId: string, pickerMode: string) => void;
   onOpenFindFile: () => void;
   onModeSwitch: (tileId: string, mode: TileMode) => void;
+  onQuit: () => void;
 }
 
 // Synchronously push DOM focus into the CodeMirror editor for a given tileId.
@@ -23,14 +24,26 @@ function focusEditorDom(tileId: string): void {
   cm?.focus();
 }
 
+// Return the focused editor's .cm-content element, or null when the focused
+// tile is not an Editor tile. Used to deliver synthesized key events for the
+// Esc-as-Meta prefix.
+function getFocusedEditorContentDom(focusedTileId: string | null): HTMLElement | null {
+  if (!focusedTileId) return null;
+  const pane = document.querySelector(`[data-testid="editor-pane-${focusedTileId}"]`);
+  return pane?.querySelector<HTMLElement>(".cm-content") ?? null;
+}
+
 export function useKeyboardShortcuts({
   onOpenBufferSwitcher,
   onOpenFindFile,
   onModeSwitch,
+  onQuit,
 }: ShortcutOptions): void {
   const prefixActive = useRef(false);
   // Track C-x n prefix (mode-switch chord)
   const nPrefixActive = useRef(false);
+  // Track Esc-as-Meta prefix (Esc, then a key = Alt+key)
+  const escPrefixActive = useRef(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -38,14 +51,62 @@ export function useKeyboardShortcuts({
       const editor = useEditorStore.getState();
       const project = useProjectStore.getState();
 
-      // Clears both prefix refs and the store flag in one place.
+      // Clears all prefix refs and the store flag in one place.
       const clearPrefix = () => {
         prefixActive.current = false;
         nPrefixActive.current = false;
+        escPrefixActive.current = false;
         if (useLayoutStore.getState().cxPrefixActive) {
           layout.setCxPrefixActive(false);
         }
       };
+
+      // ---- Esc-as-Meta prefix handling ----
+      // Step 1: Esc arms the prefix (only when no other prefix is active and
+      // no modal dialog is open — dialogs use Esc to dismiss).
+      if (
+        e.key === "Escape" &&
+        !e.ctrlKey && !e.altKey && !e.metaKey &&
+        !prefixActive.current && !nPrefixActive.current &&
+        !document.querySelector("[role=dialog]")
+      ) {
+        escPrefixActive.current = true;
+        // Do NOT preventDefault: let CodeMirror's Esc → unsetTransientMark run.
+        return;
+      }
+
+      // Step 2: Esc prefix is active — translate next non-modifier key to Alt+key.
+      if (escPrefixActive.current) {
+        // Let bare modifier keystrokes pass; wait for the character key.
+        if (
+          e.key === "Shift" || e.key === "Control" ||
+          e.key === "Alt"   || e.key === "Meta"
+        ) {
+          return;
+        }
+        escPrefixActive.current = false;
+        // Ignore a second Esc (treat as prefix cancel, same as real Emacs C-g).
+        if (e.key === "Escape") return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        const cm = getFocusedEditorContentDom(layout.focusedTileId);
+        if (cm) {
+          cm.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: e.key,
+              code: e.code,
+              altKey: true,
+              shiftKey: e.shiftKey,
+              ctrlKey: e.ctrlKey,
+              metaKey: e.metaKey,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        }
+        return;
+      }
 
       // ---- Ctrl+Shift+B — toggle sidebar ----
       if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
@@ -189,6 +250,13 @@ export function useKeyboardShortcuts({
           break;
         }
 
+        // C-x C-c — quit application (prompts to save dirty buffers)
+        case e.key === "c" && e.ctrlKey: {
+          e.preventDefault();
+          onQuit();
+          break;
+        }
+
         // C-x C-s — save current note
         case e.key === "s" && e.ctrlKey: {
           e.preventDefault();
@@ -237,5 +305,5 @@ export function useKeyboardShortcuts({
     return () => {
       document.removeEventListener("keydown", handler, true);
     };
-  }, [onOpenBufferSwitcher, onOpenFindFile, onModeSwitch]);
+  }, [onOpenBufferSwitcher, onOpenFindFile, onModeSwitch, onQuit]);
 }

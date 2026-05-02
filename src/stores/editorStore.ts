@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import * as Y from "yjs";
 import { invoke } from "@tauri-apps/api/core";
+import useLayoutStore from "./layoutStore";
 
 interface EditorStoreState {
   /** Map from file path → Y.Doc (shared across all tiles editing the same file) */
@@ -108,12 +109,25 @@ const useEditorStore = create<EditorStoreState>((set, get) => ({
     } catch {
       // Ignore
     }
-    // Update the saved-content baseline so undo-to-clean works correctly
-    // on subsequent edits after this save point.
-    set((state) => ({
-      dirtyStates: { ...state.dirtyStates, [tileId]: false },
-      savedContents: { ...state.savedContents, [filePath]: text },
-    }));
+    // Clear dirty for every tile bound to this file (not just the saving tile),
+    // mirroring the undo-to-clean loop in EditorPane. Without this, a sibling
+    // tile whose updateListener also marked dirty would keep dirty=true and
+    // trigger a false-positive save prompt on window close.
+    // Always include tileId in case the store doesn't know about it yet (tests).
+    const boundTileIds = new Set([
+      tileId,
+      ...Object.values(useLayoutStore.getState().tiles)
+        .filter((t) => t.filePath === filePath)
+        .map((t) => t.id),
+    ]);
+    set((state) => {
+      const nextDirty = { ...state.dirtyStates };
+      for (const id of boundTileIds) nextDirty[id] = false;
+      return {
+        dirtyStates: nextDirty,
+        savedContents: { ...state.savedContents, [filePath]: text },
+      };
+    });
   },
 
   startAutosave: (tileId: string, filePath: string) => {

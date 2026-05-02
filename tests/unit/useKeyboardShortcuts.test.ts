@@ -60,14 +60,15 @@ function fireKey(key: string, opts: { ctrlKey?: boolean; shiftKey?: boolean } = 
   return event;
 }
 
-function mountHook() {
+function mountHook(onQuit?: () => void) {
   const onOpenBufferSwitcher = vi.fn();
   const onOpenFindFile = vi.fn();
   const onModeSwitch = vi.fn();
+  const quitFn = onQuit ?? vi.fn();
   renderHook(() =>
-    useKeyboardShortcuts({ onOpenBufferSwitcher, onOpenFindFile, onModeSwitch }),
+    useKeyboardShortcuts({ onOpenBufferSwitcher, onOpenFindFile, onModeSwitch, onQuit: quitFn }),
   );
-  return { onOpenBufferSwitcher, onOpenFindFile, onModeSwitch };
+  return { onOpenBufferSwitcher, onOpenFindFile, onModeSwitch, onQuit: quitFn };
 }
 
 beforeEach(() => {
@@ -229,5 +230,128 @@ describe("useKeyboardShortcuts — unrecognised C-x chord does not leak into buf
 
     // cxPrefixActive must be false — the prefix has been cleared.
     expect(useLayoutStore.getState().cxPrefixActive).toBe(false);
+  });
+});
+
+describe("useKeyboardShortcuts — C-x C-c calls onQuit", () => {
+  it("C-x C-c invokes onQuit", () => {
+    seedTwoTiles();
+    const { onQuit } = mountHook();
+
+    act(() => {
+      fireKey("x", { ctrlKey: true });
+      fireKey("c", { ctrlKey: true });
+    });
+
+    expect(onQuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("C-x C-c clears the prefix", () => {
+    seedTwoTiles();
+    mountHook();
+
+    act(() => {
+      fireKey("x", { ctrlKey: true });
+      fireKey("c", { ctrlKey: true });
+    });
+
+    expect(useLayoutStore.getState().cxPrefixActive).toBe(false);
+  });
+});
+
+describe("useKeyboardShortcuts — Esc-as-Meta prefix", () => {
+  it("Esc then non-modifier key dispatches a synthesized Alt+key on .cm-content", () => {
+    seedTwoTiles();
+    mountHook();
+
+    // Plant a fake .cm-content element inside editor-pane-tile-a.
+    const pane = document.createElement("div");
+    pane.setAttribute("data-testid", "editor-pane-tile-a");
+    const cm = document.createElement("div");
+    cm.className = "cm-content";
+    pane.appendChild(cm);
+    document.body.appendChild(pane);
+
+    const receivedEvents: KeyboardEvent[] = [];
+    cm.addEventListener("keydown", (e) => receivedEvents.push(e));
+
+    act(() => {
+      fireKey("Escape");
+      fireKey(">");
+    });
+
+    expect(receivedEvents.length).toBe(1);
+    expect(receivedEvents[0].altKey).toBe(true);
+    expect(receivedEvents[0].key).toBe(">");
+
+    document.body.removeChild(pane);
+  });
+
+  it("Esc prefix does not fire when a C-x prefix is already active", () => {
+    seedTwoTiles();
+    mountHook();
+
+    act(() => {
+      fireKey("x", { ctrlKey: true }); // arm C-x prefix
+      fireKey("Escape");               // Esc while C-x prefix active
+    });
+
+    // Esc should have consumed the C-x chord (default branch), not armed Esc prefix.
+    // cxPrefixActive should be cleared.
+    expect(useLayoutStore.getState().cxPrefixActive).toBe(false);
+  });
+
+  it("Esc prefix clears on a second Esc (treated as cancel)", () => {
+    seedTwoTiles();
+    mountHook();
+
+    const pane = document.createElement("div");
+    pane.setAttribute("data-testid", "editor-pane-tile-a");
+    const cm = document.createElement("div");
+    cm.className = "cm-content";
+    pane.appendChild(cm);
+    document.body.appendChild(pane);
+
+    const receivedEvents: KeyboardEvent[] = [];
+    cm.addEventListener("keydown", (e) => receivedEvents.push(e));
+
+    act(() => {
+      fireKey("Escape");
+      fireKey("Escape"); // cancel the prefix
+    });
+
+    // No synthesized event should have been dispatched.
+    expect(receivedEvents.length).toBe(0);
+
+    document.body.removeChild(pane);
+  });
+
+  it("Esc does not arm prefix when a modal dialog is open", () => {
+    seedTwoTiles();
+    mountHook();
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    document.body.appendChild(dialog);
+
+    const pane = document.createElement("div");
+    pane.setAttribute("data-testid", "editor-pane-tile-a");
+    const cm = document.createElement("div");
+    cm.className = "cm-content";
+    pane.appendChild(cm);
+    document.body.appendChild(pane);
+
+    const receivedEvents: KeyboardEvent[] = [];
+    cm.addEventListener("keydown", (e) => receivedEvents.push(e));
+
+    act(() => {
+      fireKey("Escape");
+      fireKey(">");
+    });
+
+    expect(receivedEvents.length).toBe(0);
+
+    document.body.removeChild(dialog);
+    document.body.removeChild(pane);
   });
 });

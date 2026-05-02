@@ -7,6 +7,15 @@ import { invoke } from "@tauri-apps/api/core";
 import useLayoutStore, { PendingDialog } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 
+function clearDirtyForFile(filePath: string): void {
+  const boundTileIds = Object.values(useLayoutStore.getState().tiles)
+    .filter((t) => t.filePath === filePath || t.missingPath === filePath)
+    .map((t) => t.id);
+  for (const id of boundTileIds) {
+    useEditorStore.getState().setDirty(id, false);
+  }
+}
+
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
 }
@@ -80,7 +89,7 @@ export default function UnsavedChangesDialog(): React.ReactElement | null {
 
   const handleDiscard = async () => {
     await discardOne(filePath);
-    useEditorStore.getState().setDirty(tileId, false);
+    clearDirtyForFile(filePath);
     applyIntent();
   };
 
@@ -143,7 +152,7 @@ function MissingRecoveryDialog({
 }: MissingRecoveryDialogProps): React.ReactElement {
   const verb = pending.action === "close" ? "close" : "open a different buffer";
   const handleContinue = () => {
-    useEditorStore.getState().setDirty(pending.tileId, false);
+    if (pending.missingPath) clearDirtyForFile(pending.missingPath);
     pending.onContinue();
     onDismiss();
   };
@@ -220,9 +229,7 @@ function QuitDialog({
         }
       } else {
         await discardOne(buf.filePath);
-        useEditorStore
-          .getState()
-          .setDirty(buf.representativeTileId, false);
+        clearDirtyForFile(buf.filePath);
       }
     }
     pending.onComplete?.();

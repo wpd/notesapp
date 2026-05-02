@@ -17,6 +17,7 @@ SPEC.md wins.
 | `C-x z` | Maximize / restore current tile |
 | `C-x b` | Buffer switcher for the focused tile's mode (Editor picker in a Missing tile) |
 | `C-x C-s` | Save current note |
+| `C-x C-c` | Quit application (prompts to save any unsaved buffers — Emacs convention, not in SPEC.md §4.1) |
 | `C-x C-f` | Open note by name (in a focused Editor tile) |
 | `C-x C-r` | Open reference by name (in a focused Reference tile) |
 | `C-x n n` | Set current tile mode to **Editor** and open a note |
@@ -33,6 +34,12 @@ equivalent of `C-x n n` / `C-x n p` on markdown-bound tiles.
 Emacs bindings inside the CodeMirror editor are implemented via
 `@replit/codemirror-emacs` or equivalent. See SPEC.md §5.1 for the
 full list of editor-internal bindings.
+
+`Esc` acts as a Meta-prefix: pressing `Esc` followed by a key is
+equivalent to `Alt+<key>` (the Meta modifier in Emacs). For example,
+`Esc >` (end of buffer) and `Esc <` (beginning of buffer) are
+explicitly required by SPEC.md §5.1. All Meta-bindings registered by
+the emacs extension are available via this prefix.
 
 ---
 

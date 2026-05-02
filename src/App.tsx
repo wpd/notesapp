@@ -250,6 +250,18 @@ function AppShell(): React.ReactElement {
     });
   }, [projectDir]);
 
+  // Set OS window title to "NotesApp — <projectName>" when a project is open.
+  useEffect(() => {
+    if (!projectDir) return;
+    const name = projectDir.split("/").filter(Boolean).pop() ?? "";
+    let cancelled = false;
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      if (cancelled) return;
+      void getCurrentWindow().setTitle(name ? `NotesApp \u2014 ${name}` : "NotesApp");
+    });
+    return () => { cancelled = true; };
+  }, [projectDir]);
+
   // Listen for file-change events from the watcher
   useEffect(() => {
     const unlisten = listen<{ kind: string; path: string }>(
@@ -270,6 +282,22 @@ function AppShell(): React.ReactElement {
       unlisten.then((fn) => fn());
     };
   }, [setTileMissing]);
+
+  // Shared quit logic: used by both the native close button and C-x C-c.
+  const requestAppQuit = useCallback(async () => {
+    const dirty = collectDirtyBuffers(useEditorStore.getState().dirtyStates);
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    if (dirty.length === 0) {
+      void win.destroy();
+      return;
+    }
+    setPendingDialog({
+      kind: "quit",
+      dirtyBuffers: dirty,
+      onComplete: () => { void win.destroy(); },
+    });
+  }, [collectDirtyBuffers, setPendingDialog]);
 
   // SPEC.md §4.0.1 — consolidated quit dialog. Intercept the native window
   // close request. If any buffer is dirty, show the consolidated dialog;
@@ -513,6 +541,7 @@ function AppShell(): React.ReactElement {
     onOpenBufferSwitcher: handleOpenBufferSwitcher,
     onOpenFindFile: handleOpenFindFile,
     onModeSwitch: handleModeSwitch,
+    onQuit: () => { void requestAppQuit(); },
   });
 
   return (

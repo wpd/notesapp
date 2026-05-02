@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import useEditorStore from "../../src/stores/editorStore";
+import useLayoutStore from "../../src/stores/layoutStore";
 
 const invokeMock = (
   window as unknown as { __TAURI_INTERNALS__: { invoke: ReturnType<typeof vi.fn> } }
@@ -135,5 +136,64 @@ describe("editorStore — saveFile updates savedContents", () => {
     expect(
       useEditorStore.getState().isContentClean("/proj/a.md", "original"),
     ).toBe(false);
+  });
+});
+
+describe("editorStore — saveFile clears dirty for all bound tiles", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
+    useEditorStore.setState({
+      ydocs: {},
+      dirtyStates: {},
+      autosaveTimers: {},
+      cursorLines: {},
+      savedContents: {},
+    });
+    useLayoutStore.setState({
+      mosaicTree: {
+        direction: "row" as const,
+        first: "tile-a",
+        second: "tile-b",
+        splitPercentage: 50,
+      },
+      tiles: {
+        "tile-a": { id: "tile-a", mode: "editor" as const, filePath: "/proj/a.md" },
+        "tile-b": { id: "tile-b", mode: "editor" as const, filePath: "/proj/a.md" },
+      },
+      focusedTileId: "tile-a",
+      pinnedTileId: null,
+      sidebarVisible: true,
+      maximizedTileId: null,
+      savedTreeBeforeMaximize: null,
+      tileCounter: 2,
+      pendingDialog: null,
+      cxPrefixActive: false,
+      wordWrap: {},
+    });
+  });
+
+  it("saveFile clears dirty on both tiles when two tiles share the same file", async () => {
+    const ydoc = useEditorStore.getState().getOrCreateYDoc("/proj/a.md");
+    ydoc.getText("content").insert(0, "hello");
+
+    useEditorStore.getState().setDirty("tile-a", true);
+    useEditorStore.getState().setDirty("tile-b", true);
+
+    await useEditorStore.getState().saveFile("tile-a", "/proj/a.md");
+
+    expect(useEditorStore.getState().isDirty("tile-a")).toBe(false);
+    expect(useEditorStore.getState().isDirty("tile-b")).toBe(false);
+  });
+
+  it("saveFile clears dirty even for the tile not passed as tileId", async () => {
+    const ydoc = useEditorStore.getState().getOrCreateYDoc("/proj/a.md");
+    ydoc.getText("content").insert(0, "world");
+
+    useEditorStore.getState().setDirty("tile-b", true);
+
+    await useEditorStore.getState().saveFile("tile-a", "/proj/a.md");
+
+    expect(useEditorStore.getState().isDirty("tile-b")).toBe(false);
   });
 });

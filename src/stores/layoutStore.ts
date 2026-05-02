@@ -662,11 +662,18 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
   collectDirtyBuffers: (dirtyTiles) => {
     const { tiles } = get();
+    const editor = useEditorStore.getState();
     const seen = new Map<string, string>();
     for (const [tileId, isDirty] of Object.entries(dirtyTiles)) {
       if (!isDirty) continue;
       const tile = tiles[tileId];
       if (!tile?.filePath || tile.mode === "missing") continue;
+      // Defense-in-depth: verify Y.Doc content actually differs from saved
+      // baseline — stale dirty flags (e.g. from a sibling tile that was not
+      // cleared on save) must not produce false-positive close prompts.
+      const ydoc = editor.ydocs[tile.filePath];
+      const current = ydoc?.getText("content").toString() ?? "";
+      if (editor.isContentClean(tile.filePath, current)) continue;
       if (!seen.has(tile.filePath)) {
         seen.set(tile.filePath, tileId);
       }

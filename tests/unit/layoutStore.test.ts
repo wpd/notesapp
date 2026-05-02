@@ -543,6 +543,37 @@ describe("layoutStore", () => {
       });
       expect(dirty).toEqual([]);
     });
+
+    it("skips tiles whose Y.Doc content matches savedContents (defense-in-depth)", () => {
+      // Simulate a stale dirty flag: dirtyStates says dirty, but Y.Doc = saved baseline.
+      useLayoutStore.setState({
+        tiles: {
+          "editor-1": { id: "editor-1", mode: "editor", filePath: "/p/a.md" },
+        },
+      });
+      // Plant a Y.Doc with content equal to savedContents.
+      const ydoc = useEditorStore.getState().getOrCreateYDoc("/p/a.md");
+      ydoc.getText("content").insert(0, "clean content");
+      useEditorStore.getState().setSavedContent("/p/a.md", "clean content");
+
+      const dirty = useLayoutStore.getState().collectDirtyBuffers({ "editor-1": true });
+      expect(dirty).toEqual([]);
+    });
+
+    it("includes tiles whose Y.Doc content differs from savedContents", () => {
+      useLayoutStore.setState({
+        tiles: {
+          "editor-1": { id: "editor-1", mode: "editor", filePath: "/p/a.md" },
+        },
+      });
+      const ydoc = useEditorStore.getState().getOrCreateYDoc("/p/a.md");
+      ydoc.getText("content").insert(0, "modified content");
+      useEditorStore.getState().setSavedContent("/p/a.md", "original content");
+
+      const dirty = useLayoutStore.getState().collectDirtyBuffers({ "editor-1": true });
+      expect(dirty.length).toBe(1);
+      expect(dirty[0].filePath).toBe("/p/a.md");
+    });
   });
 
   // -------------------------------------------------------------------------
