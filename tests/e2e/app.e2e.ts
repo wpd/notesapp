@@ -1964,3 +1964,170 @@ describe("Layout persistence", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// C-x N tile focus, number badge, and unrecognised-chord buffer-leak guard
+// ---------------------------------------------------------------------------
+
+describe("C-x N tile focus and number badge (SPEC §4.1)", () => {
+  /** Read the ordered tile IDs from the live layout store via the E2E bridge. */
+  async function getOrderedTileIds(): Promise<string[]> {
+    return browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { getOrderedTileIds: () => string[] };
+        }
+      ).__notesapp_layout__;
+      return fn ? fn().getOrderedTileIds() : [];
+    });
+  }
+
+  it("number badges appear (one per tile) when C-x prefix is active", async () => {
+    // Start from a clean 2-tile state.
+    await waitForId("app-root", 25000);
+    await clickFirstTile();
+    await browser.pause(200);
+
+    const tileCountBefore = await getTileCount();
+    expect(tileCountBefore).toBeGreaterThanOrEqual(2);
+
+    // Fire C-x without completing the chord.
+    await browser.action('key')
+      .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL)
+      .perform();
+    await browser.pause(200);
+
+    // Every tile should now have a visible number badge.
+    const badgeCount = await browser.execute(() =>
+      document.querySelectorAll('[data-testid^="tile-number-badge-"]').length,
+    );
+    expect(badgeCount).toBe(tileCountBefore);
+  });
+
+  it("number badges disappear after the chord completes", async () => {
+    await clickFirstTile();
+    await browser.pause(200);
+
+    // Send a full recognised chord (C-x o).
+    await sendCxChord('o');
+    await browser.pause(200);
+
+    const badgeCount = await browser.execute(() =>
+      document.querySelectorAll('[data-testid^="tile-number-badge-"]').length,
+    );
+    expect(badgeCount).toBe(0);
+  });
+
+  it("number badges disappear after an unrecognised chord (C-x q)", async () => {
+    await clickFirstTile();
+    await browser.pause(200);
+
+    await browser.action('key')
+      .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL)
+      .perform();
+    await browser.pause(200);
+
+    await browser.action('key').down('q').up('q').perform();
+    await browser.pause(200);
+
+    const badgeCount = await browser.execute(() =>
+      document.querySelectorAll('[data-testid^="tile-number-badge-"]').length,
+    );
+    expect(badgeCount).toBe(0);
+  });
+
+  it("C-x 2 focuses the second tile in reading order", async () => {
+    // Ensure we start with at least 2 tiles.
+    await waitForId("app-root", 25000);
+    const tileCount = await getTileCount();
+    expect(tileCount).toBeGreaterThanOrEqual(2);
+
+    // Click the first tile to make it focused.
+    await clickFirstTile();
+    await browser.pause(300);
+
+    const orderedIds = await getOrderedTileIds();
+    expect(orderedIds.length).toBeGreaterThanOrEqual(2);
+
+    // Send C-x 2.
+    await browser.action('key')
+      .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+    await browser.action('key').down('2').up('2').perform();
+    await browser.pause(300);
+
+    const focusedId = await getFocusedTileId();
+    expect(focusedId).toBe(orderedIds[1]);
+  });
+
+  it("C-x 1 focuses the first tile in reading order", async () => {
+    await waitForId("app-root", 25000);
+
+    const orderedIds = await getOrderedTileIds();
+    expect(orderedIds.length).toBeGreaterThanOrEqual(1);
+
+    // Focus tile 2 first so we know focus is somewhere other than tile 1.
+    if (orderedIds.length >= 2) {
+      await browser.action('key')
+        .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL)
+        .perform();
+      await browser.pause(150);
+      await browser.action('key').down('2').up('2').perform();
+      await browser.pause(300);
+    }
+
+    // Now send C-x 1.
+    await browser.action('key')
+      .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+    await browser.action('key').down('1').up('1').perform();
+    await browser.pause(300);
+
+    const focusedId = await getFocusedTileId();
+    expect(focusedId).toBe(orderedIds[0]);
+  });
+
+  it("C-x q (unrecognised chord) does not insert 'q' into the editor buffer", async () => {
+    // Click the first editor tile so it is focused and interactable.
+    await clickFirstTileOfType("editor");
+    await browser.pause(300);
+
+    // Click the CodeMirror content area to place the cursor.
+    const cmContent = await $(".cm-content");
+    await cmContent.waitForDisplayed({ timeout: 5000 });
+    // Use execute-click as a workaround for WebKitWebDriver interactability
+    // quirks that sometimes prevent .click() after a focus change.
+    await browser.execute((el: HTMLElement) => el.click(), cmContent);
+    await browser.pause(300);
+
+    // Select all and replace with a unique sentinel.
+    const sentinel = "BUFLEAKGUARD" + Date.now();
+    await browser.action('key')
+      .down(KEY.CTRL).down('a').up('a').up(KEY.CTRL)
+      .perform();
+    await browser.pause(100);
+    for (const ch of sentinel) {
+      await browser.action('key').down(ch).up(ch).perform();
+    }
+    await browser.pause(200);
+
+    // Send C-x q — the unrecognised chord must NOT insert 'q'.
+    await browser.action('key')
+      .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+    await browser.action('key').down('q').up('q').perform();
+    await browser.pause(300);
+
+    // Read the editor text.  The CM content element holds the document text.
+    const editorText = await browser.execute(
+      () => document.querySelector(".cm-content")?.textContent ?? "",
+    );
+    // The sentinel must appear without an extra 'q' appended or prepended.
+    expect(editorText).toContain(sentinel);
+    expect(editorText).not.toContain(sentinel + "q");
+    expect(editorText).not.toMatch(new RegExp("q" + sentinel));
+  });
+});

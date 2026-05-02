@@ -325,7 +325,7 @@ The `C-x` prefix family is intentionally consistent with Emacs window/buffer com
 
 The application provides current state-of-the art common usage top level menu bar items, for example for file open, file close, project open, project close, copy, paste, select all, search, etc...
 
-**Tile numbering for `C-x N`:** tiles are numbered 1–9 in reading order (left to right, top to bottom) based on the current layout. A small number badge is shown in each tile's title bar while `Ctrl` is held, so the user can see which number corresponds to which tile before releasing the key.
+**Tile numbering for `C-x N`:** tiles are numbered 1–9 in reading order (left to right, top to bottom) based on the current layout. A small number badge is shown in each tile's title bar while the `C-x` prefix is active (i.e. between pressing `C-x` and completing the chord), so the user can see which number corresponds to which tile before pressing the digit. The badge disappears as soon as the chord completes or is cancelled.
 
 ### 4.2 Activity Sidebar
 

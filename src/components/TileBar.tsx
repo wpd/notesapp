@@ -2,7 +2,7 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
-import React from "react";
+import React, { useMemo } from "react";
 import useLayoutStore, { TileMode } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 
@@ -42,6 +42,12 @@ export default function TileBar({
   } = useLayoutStore();
   const isDirty = useEditorStore((s) => s.dirtyStates[tileId] ?? false);
   const wordWrap = useLayoutStore((s) => s.wordWrap[tileId] ?? true);
+  const cxPrefixActive = useLayoutStore((s) => s.cxPrefixActive);
+  // Derive tileNumber from the already-selected mosaicTree (stable reference between renders).
+  const tileNumber = useMemo(() => {
+    if (!mosaicTree) return 0;
+    return collectLeavesMemo(mosaicTree).indexOf(tileId) + 1;
+  }, [mosaicTree, tileId]);
 
   const isPinned = pinnedTileId === tileId;
 
@@ -127,6 +133,26 @@ export default function TileBar({
       >
         {MODE_LABELS[mode]}
       </button>
+
+      {/* C-x prefix tile-number badge (SPEC.md §4.1) */}
+      {cxPrefixActive && tileNumber >= 1 && tileNumber <= 9 && (
+        <span
+          data-testid={`tile-number-badge-${tileId}`}
+          style={{
+            background: "var(--color-accent)",
+            color: "var(--color-bg-primary)",
+            fontFamily: "var(--font-editor)",
+            fontSize: "11px",
+            fontWeight: 700,
+            lineHeight: 1,
+            padding: "1px 5px",
+            borderRadius: "3px",
+            flexShrink: 0,
+          }}
+        >
+          {tileNumber}
+        </span>
+      )}
 
       {/* Buffer name + dropdown (not shown on Missing tiles) */}
       {mode !== "missing" ? (
@@ -286,6 +312,13 @@ function countLeaves(
 ): number {
   if (typeof tree === "string") return 1;
   return countLeaves(tree.first) + countLeaves(tree.second);
+}
+
+function collectLeavesMemo(
+  tree: import("react-mosaic-component").MosaicNode<string>,
+): string[] {
+  if (typeof tree === "string") return [tree];
+  return [...collectLeavesMemo(tree.first), ...collectLeavesMemo(tree.second)];
 }
 
 function btnStyle(active: boolean): React.CSSProperties {

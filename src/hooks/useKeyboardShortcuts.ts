@@ -28,12 +28,20 @@ export function useKeyboardShortcuts({
       const editor = useEditorStore.getState();
       const project = useProjectStore.getState();
 
+      // Clears both prefix refs and the store flag in one place.
+      const clearPrefix = () => {
+        prefixActive.current = false;
+        nPrefixActive.current = false;
+        if (useLayoutStore.getState().cxPrefixActive) {
+          layout.setCxPrefixActive(false);
+        }
+      };
+
       // ---- Ctrl+Shift+B — toggle sidebar ----
       if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
         e.preventDefault();
         layout.toggleSidebar();
-        prefixActive.current = false;
-        nPrefixActive.current = false;
+        clearPrefix();
         return;
       }
 
@@ -42,6 +50,7 @@ export function useKeyboardShortcuts({
         e.preventDefault();
         prefixActive.current = true;
         nPrefixActive.current = false;
+        layout.setCxPrefixActive(true);
         return;
       }
 
@@ -50,12 +59,13 @@ export function useKeyboardShortcuts({
         e.preventDefault();
         prefixActive.current = false;
         nPrefixActive.current = true;
+        // cxPrefixActive stays true while C-x n sub-prefix is pending
         return;
       }
 
       // ---- Handle C-x n {n,p,r,c} ----
       if (nPrefixActive.current) {
-        nPrefixActive.current = false;
+        clearPrefix();
         const focused = layout.focusedTileId;
         if (!focused) return;
 
@@ -86,12 +96,13 @@ export function useKeyboardShortcuts({
             onModeSwitch(focused, "aichat");
             return;
           default:
+            e.preventDefault();
             return;
         }
       }
 
       if (!prefixActive.current) return;
-      prefixActive.current = false;
+      clearPrefix();
 
       const focused = layout.focusedTileId;
 
@@ -192,7 +203,17 @@ export function useKeyboardShortcuts({
           break;
         }
 
+        // C-x N (1–9) — focus tile by reading-order index
+        case /^[1-9]$/.test(e.key) && !e.ctrlKey: {
+          e.preventDefault();
+          const ids = layout.getOrderedTileIds();
+          const idx = Number(e.key) - 1;
+          if (idx < ids.length) layout.focusTile(ids[idx]);
+          break;
+        }
+
         default:
+          e.preventDefault();
           break;
       }
     };

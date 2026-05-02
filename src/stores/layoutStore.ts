@@ -91,6 +91,8 @@ interface LayoutStoreState {
   pendingDialog: PendingDialog | null;
   /** Per-tile word-wrap preference for editor tiles. Defaults to true. */
   wordWrap: Record<string, boolean>;
+  /** True while the C-x prefix chord is active (between C-x and the second key). */
+  cxPrefixActive: boolean;
 
   // Getters
   getTileIds: () => string[];
@@ -123,6 +125,7 @@ interface LayoutStoreState {
   loadLayout: (projectDir: string) => Promise<boolean>;
   setStatusMessage: (msg: string | null) => void;
   toggleWordWrap: (tileId: string) => void;
+  setCxPrefixActive: (active: boolean) => void;
 
   /** Count how many tiles are bound to a given filePath */
   countTilesForFile: (filePath: string) => number;
@@ -195,6 +198,7 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
   statusMessage: null,
   pendingDialog: null,
   wordWrap: {},
+  cxPrefixActive: false,
 
   getTileIds: () => {
     const { mosaicTree } = get();
@@ -629,6 +633,10 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         [tileId]: !(state.wordWrap[tileId] ?? true),
       },
     }));
+  },
+
+  setCxPrefixActive: (active) => {
+    set({ cxPrefixActive: active });
   },
 
   countTilesForFile: (filePath) => {
