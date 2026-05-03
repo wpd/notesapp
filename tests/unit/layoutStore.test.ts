@@ -580,6 +580,44 @@ describe("layoutStore", () => {
   // SPEC.md §5.5 — layout restore verifies file existence
   // -------------------------------------------------------------------------
 
+  describe("loadLayout — duplicate leaf IDs", () => {
+    beforeEach(() => {
+      getInvokeMock().mockReset();
+    });
+
+    it("returns false and shows a status message when the tree has duplicate leaf IDs", async () => {
+      const persisted = {
+        tree: {
+          direction: "row",
+          first: {
+            direction: "column",
+            first: "editor-1",
+            second: "editor-1", // duplicate
+            splitPercentage: 50,
+          },
+          second: "preview-2",
+          splitPercentage: 50,
+        },
+        tiles: {
+          "editor-1": { mode: "editor", filePath: "/p/a.md" },
+          "preview-2": { mode: "preview", filePath: "/p/a.md" },
+        },
+      };
+      getInvokeMock().mockImplementation(async (cmd: string) => {
+        if (cmd === "load_layout") return JSON.stringify(persisted);
+        if (cmd === "file_exists") return true;
+        return undefined;
+      });
+
+      const restored = await useLayoutStore.getState().loadLayout("/p");
+      expect(restored).toBe(false);
+      // mosaicTree must NOT have been set to the broken tree
+      expect(useLayoutStore.getState().mosaicTree).toBeNull();
+      // A status message should inform the user
+      expect(useLayoutStore.getState().statusMessage).toBeTruthy();
+    });
+  });
+
   describe("loadLayout with missing files", () => {
     beforeEach(() => {
       getInvokeMock().mockReset();

@@ -604,6 +604,17 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         if (!tiles[id]) return false;
       }
 
+      // Reject layouts whose tree contains duplicate leaf IDs — react-mosaic
+      // requires each tile to appear exactly once. A duplicate can arise from
+      // a crash mid-write or external file editing.
+      const leafSet = new Set(leafIds);
+      if (leafSet.size !== leafIds.length) {
+        useLayoutStore.getState().setStatusMessage(
+          "Saved layout was invalid and could not be restored — using default layout",
+        );
+        return false;
+      }
+
       set({
         mosaicTree: data.tree,
         tiles,
