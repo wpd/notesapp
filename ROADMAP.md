@@ -513,6 +513,7 @@ project-aware tool use (search notes, read notes, list references).
       `C-w` while searching
 - [ ] Emacs query replace: `M-%`, `M-C-%`
 - [ ] `M-y` yank-pop (kill ring)
+- [ ] Header navigation in Editor tile: `C-c C-n` (next visible heading), `C-c C-p` (previous visible heading)
 - [ ] LanguageTool integration (optional, config.toml flag)
 - [ ] Toolbar shortcuts for all markdown constructs
 - [ ] Find/replace panel with regex support

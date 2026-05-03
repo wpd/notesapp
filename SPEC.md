@@ -318,6 +318,8 @@ The application provides a configuration item for selecting current state-of-the
 | Cursor movement matches Emacs bindings | `C-a`, `C-e` `C-b`, `C-f`, `C-p`, `C-n`, `M-<`, `M->`, etc... |
 | Emacs style Incremental and Regexp incremental search support and key bindings | `C-s`, `C-r`, `M-C-s`, `M-C-r`, `C-w` (while searching) |
 | Emacs style Query Replace and Query Replace regexp | `M-%`, `M-C-%` |
+| Move cursor to next visible Markdown header in Editor tile | `C-c` `C-n` |
+| Move cursor to previous visible Markdown header in Editor tile | `C-c` `C-p` |
 | Emacs style use of ESC as an alternative to the META key ||
 
 

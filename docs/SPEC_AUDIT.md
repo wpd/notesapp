@@ -48,6 +48,8 @@ and layout shortcuts), §5.1 (editor-internal Emacs bindings), and §5.5
 | `Ctrl/Cmd+=` | Increase font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:131`; `layoutStore.ts:incrementTileFontScale`; `useKeyboardShortcuts.test.ts:368` |
 | `Ctrl/Cmd+-` | Decrease font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:136`; `layoutStore.ts:decrementTileFontScale`; `useKeyboardShortcuts.test.ts:373` |
 | `Ctrl/Cmd+0` | Reset font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:141`; `layoutStore.ts:resetTileFontScale`; `useKeyboardShortcuts.test.ts:378` |
+| `C-c C-n` | Next Markdown header in Editor tile | DEFERRED | ROADMAP.md Phase 5 |
+| `C-c C-p` | Previous Markdown header in Editor tile | DEFERRED | ROADMAP.md Phase 5 |
 
 ## §5.1 — Editor-Internal Emacs Bindings
 
