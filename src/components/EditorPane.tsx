@@ -26,6 +26,7 @@ import { spellcheckTrigger } from "../utils/spellcheckTrigger";
 import { spellingDecorations } from "../utils/spellingDecorations";
 import { mathMermaidHighlight } from "../utils/mathMermaidHighlight";
 import { disableMacosAutoSubstitution } from "../utils/disableMacosAutoSubstitution";
+import { registerEditorView, unregisterEditorView } from "../editor/editorViewRegistry";
 
 interface EditorPaneProps {
   tileId: string;
@@ -170,6 +171,7 @@ export default function EditorPane({
     });
 
     viewRef.current = view;
+    registerEditorView(tileId, view);
     updateCounts(view.state.doc.toString());
 
     if (filePath) {
@@ -177,6 +179,7 @@ export default function EditorPane({
     }
 
     return () => {
+      unregisterEditorView(tileId);
       if (filePath) stopAutosave(tileId);
       view.destroy();
       viewRef.current = null;

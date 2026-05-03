@@ -3,9 +3,19 @@
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
 import { useEffect, useRef } from "react";
+import {
+  cursorDocStart,
+  cursorDocEnd,
+  cursorGroupForward,
+  cursorGroupBackward,
+  deleteGroupForward,
+  deleteGroupBackward,
+} from "@codemirror/commands";
+import type { EditorView } from "@codemirror/view";
 import useLayoutStore, { TileMode } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 import useProjectStore from "../stores/projectStore";
+import { getEditorView } from "../editor/editorViewRegistry";
 
 interface ShortcutOptions {
   onOpenBufferSwitcher: (tileId: string, pickerMode: string) => void;
@@ -24,14 +34,22 @@ function focusEditorDom(tileId: string): void {
   cm?.focus();
 }
 
-// Return the focused editor's .cm-content element, or null when the focused
-// tile is not an Editor tile. Used to deliver synthesized key events for the
-// Esc-as-Meta prefix.
-function getFocusedEditorContentDom(focusedTileId: string | null): HTMLElement | null {
-  if (!focusedTileId) return null;
-  const pane = document.querySelector(`[data-testid="editor-pane-${focusedTileId}"]`);
-  return pane?.querySelector<HTMLElement>(".cm-content") ?? null;
-}
+// Commands dispatched directly for the Esc-as-Meta prefix. Direct dispatch
+// bypasses @replit/codemirror-emacs EmacsHandler.getKey(), which has a latent
+// bug where S-M-<punctuation> bindings are unreachable (e.code "Period"/"Comma"
+// never matches the binding key "."/"," stored by bindKey). Letter-key bindings
+// work fine through the package, but using a single direct-dispatch path for all
+// Esc-prefix keys is simpler than mixing two approaches.
+type CmCommand = (view: EditorView) => boolean;
+
+const META_COMMANDS: Record<string, CmCommand> = {
+  "<": cursorDocStart,
+  ">": cursorDocEnd,
+  "f": cursorGroupForward,
+  "b": cursorGroupBackward,
+  "d": deleteGroupForward,
+  "Backspace": deleteGroupBackward,
+};
 
 export function useKeyboardShortcuts({
   onOpenBufferSwitcher,
@@ -75,7 +93,7 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // Step 2: Esc prefix is active — translate next non-modifier key to Alt+key.
+      // Step 2: Esc prefix is active — run the corresponding Meta command directly.
       if (escPrefixActive.current) {
         // Let bare modifier keystrokes pass; wait for the character key.
         if (
@@ -90,20 +108,13 @@ export function useKeyboardShortcuts({
 
         e.preventDefault();
         e.stopPropagation();
-        const cm = getFocusedEditorContentDom(layout.focusedTileId);
-        if (cm) {
-          cm.dispatchEvent(
-            new KeyboardEvent("keydown", {
-              key: e.key,
-              code: e.code,
-              altKey: true,
-              shiftKey: e.shiftKey,
-              ctrlKey: e.ctrlKey,
-              metaKey: e.metaKey,
-              bubbles: true,
-              cancelable: true,
-            }),
-          );
+        const view = layout.focusedTileId ? getEditorView(layout.focusedTileId) : null;
+        if (view) {
+          const cmd = META_COMMANDS[e.key];
+          if (cmd) {
+            cmd(view);
+            view.focus();
+          }
         }
         return;
       }

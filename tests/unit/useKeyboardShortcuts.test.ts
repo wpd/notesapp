@@ -2,10 +2,17 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { emacs } from "@replit/codemirror-emacs";
 import { useKeyboardShortcuts } from "../../src/hooks/useKeyboardShortcuts";
 import useLayoutStore from "../../src/stores/layoutStore";
+import {
+  registerEditorView,
+  unregisterEditorView,
+} from "../../src/editor/editorViewRegistry";
 
 // Stub @tauri-apps/api/core so invoke() resolves immediately in jsdom.
 vi.mock("@tauri-apps/api/core", () => ({
@@ -69,6 +76,16 @@ function mountHook(onQuit?: () => void) {
     useKeyboardShortcuts({ onOpenBufferSwitcher, onOpenFindFile, onModeSwitch, onQuit: quitFn }),
   );
   return { onOpenBufferSwitcher, onOpenFindFile, onModeSwitch, onQuit: quitFn };
+}
+
+/** Create a real CodeMirror EditorView with emacs() extension attached to a DOM div. */
+function createEmacsView(doc: string): EditorView {
+  const parent = document.createElement("div");
+  document.body.appendChild(parent);
+  return new EditorView({
+    state: EditorState.create({ doc, extensions: [emacs()] }),
+    parent,
+  });
 }
 
 beforeEach(() => {
@@ -259,37 +276,48 @@ describe("useKeyboardShortcuts — C-x C-c calls onQuit", () => {
   });
 });
 
-describe("useKeyboardShortcuts — Esc-as-Meta prefix", () => {
-  it("Esc then non-modifier key dispatches a synthesized Alt+key on .cm-content", () => {
+describe("useKeyboardShortcuts — Esc-as-Meta prefix (direct command dispatch)", () => {
+  let view: EditorView;
+
+  beforeEach(() => {
     seedTwoTiles();
+    view = createEmacsView("hello\nworld");
+    registerEditorView("tile-a", view);
+  });
+
+  afterEach(() => {
+    unregisterEditorView("tile-a");
+    view.dom.parentElement?.remove();
+    view.destroy();
+  });
+
+  it("Esc > moves cursor to end of document", () => {
     mountHook();
-
-    // Plant a fake .cm-content element inside editor-pane-tile-a.
-    const pane = document.createElement("div");
-    pane.setAttribute("data-testid", "editor-pane-tile-a");
-    const cm = document.createElement("div");
-    cm.className = "cm-content";
-    pane.appendChild(cm);
-    document.body.appendChild(pane);
-
-    const receivedEvents: KeyboardEvent[] = [];
-    cm.addEventListener("keydown", (e) => receivedEvents.push(e));
 
     act(() => {
       fireKey("Escape");
       fireKey(">");
     });
 
-    expect(receivedEvents.length).toBe(1);
-    expect(receivedEvents[0].altKey).toBe(true);
-    expect(receivedEvents[0].key).toBe(">");
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+  });
 
-    document.body.removeChild(pane);
+  it("Esc < moves cursor to beginning of document", () => {
+    // First go to end so the assertion is meaningful.
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    mountHook();
+
+    act(() => {
+      fireKey("Escape");
+      fireKey("<");
+    });
+
+    expect(view.state.selection.main.head).toBe(0);
   });
 
   it("Esc prefix does not fire when a C-x prefix is already active", () => {
-    seedTwoTiles();
     mountHook();
+    const initialHead = view.state.selection.main.head;
 
     act(() => {
       fireKey("x", { ctrlKey: true }); // arm C-x prefix
@@ -297,61 +325,38 @@ describe("useKeyboardShortcuts — Esc-as-Meta prefix", () => {
     });
 
     // Esc should have consumed the C-x chord (default branch), not armed Esc prefix.
-    // cxPrefixActive should be cleared.
+    // cxPrefixActive should be cleared and cursor should not have moved.
     expect(useLayoutStore.getState().cxPrefixActive).toBe(false);
+    expect(view.state.selection.main.head).toBe(initialHead);
   });
 
-  it("Esc prefix clears on a second Esc (treated as cancel)", () => {
-    seedTwoTiles();
+  it("second Esc cancels the prefix — no cursor movement", () => {
     mountHook();
-
-    const pane = document.createElement("div");
-    pane.setAttribute("data-testid", "editor-pane-tile-a");
-    const cm = document.createElement("div");
-    cm.className = "cm-content";
-    pane.appendChild(cm);
-    document.body.appendChild(pane);
-
-    const receivedEvents: KeyboardEvent[] = [];
-    cm.addEventListener("keydown", (e) => receivedEvents.push(e));
+    const initialHead = view.state.selection.main.head;
 
     act(() => {
       fireKey("Escape");
       fireKey("Escape"); // cancel the prefix
     });
 
-    // No synthesized event should have been dispatched.
-    expect(receivedEvents.length).toBe(0);
-
-    document.body.removeChild(pane);
+    expect(view.state.selection.main.head).toBe(initialHead);
   });
 
   it("Esc does not arm prefix when a modal dialog is open", () => {
-    seedTwoTiles();
     mountHook();
+    const initialHead = view.state.selection.main.head;
 
     const dialog = document.createElement("div");
     dialog.setAttribute("role", "dialog");
     document.body.appendChild(dialog);
-
-    const pane = document.createElement("div");
-    pane.setAttribute("data-testid", "editor-pane-tile-a");
-    const cm = document.createElement("div");
-    cm.className = "cm-content";
-    pane.appendChild(cm);
-    document.body.appendChild(pane);
-
-    const receivedEvents: KeyboardEvent[] = [];
-    cm.addEventListener("keydown", (e) => receivedEvents.push(e));
 
     act(() => {
       fireKey("Escape");
       fireKey(">");
     });
 
-    expect(receivedEvents.length).toBe(0);
+    expect(view.state.selection.main.head).toBe(initialHead);
 
     document.body.removeChild(dialog);
-    document.body.removeChild(pane);
   });
 });
