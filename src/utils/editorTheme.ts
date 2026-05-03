@@ -17,7 +17,7 @@ export const notesAppTheme: Extension = EditorView.theme(
       background: "var(--color-bg-primary)",
       color: "var(--color-text-primary)",
       fontFamily: "var(--font-editor)",
-      fontSize: "var(--font-size-editor-default)",
+      fontSize: "calc(var(--font-size-editor-default) * var(--tile-font-scale, 1))",
     },
     ".cm-content": {
       caretColor: "var(--color-accent)",

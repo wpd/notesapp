@@ -134,4 +134,23 @@ call out the deviation in the commit message and ISSUES.md, per CLAUDE.md §7.
 
 ---
 
+## ISSUE-006 — `C-x C-r` (open reference by name) shortcut not implemented
+
+**Status:** Open
+
+**Symptom:** SPEC.md §4.1 lists `C-x C-r` as "Open reference by name (focused
+Reference tile)". The shortcut is listed in `docs/SHORTCUTS.md:22` as if it
+exists, but there is no handler in `src/hooks/useKeyboardShortcuts.ts` — the
+chord falls through to the default `e.preventDefault()` branch and silently
+does nothing.
+
+**Root cause:** Phase 1 tiling-layout implementation did not include the
+Reference tile infrastructure. The `C-x n r` mode-switch uses a stub picker
+(per the Phase 1 substitution), and `C-x C-r` was never wired.
+
+**Resolution path:** Implement in Phase 3 alongside the Reference tile and its
+buffer picker. Update `docs/SHORTCUTS.md` and `docs/SPEC_AUDIT.md` when done.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

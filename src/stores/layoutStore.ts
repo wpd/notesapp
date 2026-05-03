@@ -93,6 +93,8 @@ interface LayoutStoreState {
   wordWrap: Record<string, boolean>;
   /** True while the C-x prefix chord is active (between C-x and the second key). */
   cxPrefixActive: boolean;
+  /** Per-tile font scale factor. Absent key means 1.0 (default). */
+  tileFontScale: Record<string, number>;
 
   // Getters
   getTileIds: () => string[];
@@ -126,6 +128,9 @@ interface LayoutStoreState {
   setStatusMessage: (msg: string | null) => void;
   toggleWordWrap: (tileId: string) => void;
   setCxPrefixActive: (active: boolean) => void;
+  incrementTileFontScale: (tileId: string) => void;
+  decrementTileFontScale: (tileId: string) => void;
+  resetTileFontScale: (tileId: string) => void;
 
   /** Count how many tiles are bound to a given filePath */
   countTilesForFile: (filePath: string) => number;
@@ -199,6 +204,7 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
   pendingDialog: null,
   wordWrap: {},
   cxPrefixActive: false,
+  tileFontScale: {},
 
   getTileIds: () => {
     const { mosaicTree } = get();
@@ -245,8 +251,12 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
       const liveIds = new Set(getLeaves(tree));
       set((state) => {
         const tiles = { ...state.tiles };
+        const tileFontScale = { ...state.tileFontScale };
         for (const id of Object.keys(tiles)) {
-          if (!liveIds.has(id)) delete tiles[id];
+          if (!liveIds.has(id)) {
+            delete tiles[id];
+            delete tileFontScale[id];
+          }
         }
         const pinnedTileId =
           state.pinnedTileId && liveIds.has(state.pinnedTileId)
@@ -258,7 +268,7 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
             : liveIds.size > 0
               ? [...liveIds][0]
               : null;
-        return { tiles, pinnedTileId, focusedTileId };
+        return { tiles, tileFontScale, pinnedTileId, focusedTileId };
       });
     }
     schedulePersist();
@@ -330,12 +340,15 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
     const newTiles = { ...tiles };
     delete newTiles[tileId];
+    const newScales = { ...get().tileFontScale };
+    delete newScales[tileId];
 
     const newFocused = leaves.find((id) => id !== tileId) ?? null;
 
     set({
       mosaicTree: newTree,
       tiles: newTiles,
+      tileFontScale: newScales,
       focusedTileId: newFocused,
       pinnedTileId: get().pinnedTileId === tileId ? null : get().pinnedTileId,
     });
@@ -648,6 +661,30 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
   setCxPrefixActive: (active) => {
     set({ cxPrefixActive: active });
+  },
+
+  incrementTileFontScale: (tileId) => {
+    set((state) => {
+      const current = state.tileFontScale[tileId] ?? 1.0;
+      const next = Math.min(3.0, Math.round((current + 0.1) * 10) / 10);
+      return { tileFontScale: { ...state.tileFontScale, [tileId]: next } };
+    });
+  },
+
+  decrementTileFontScale: (tileId) => {
+    set((state) => {
+      const current = state.tileFontScale[tileId] ?? 1.0;
+      const next = Math.max(0.5, Math.round((current - 0.1) * 10) / 10);
+      return { tileFontScale: { ...state.tileFontScale, [tileId]: next } };
+    });
+  },
+
+  resetTileFontScale: (tileId) => {
+    set((state) => {
+      const scales = { ...state.tileFontScale };
+      delete scales[tileId];
+      return { tileFontScale: scales };
+    });
   },
 
   countTilesForFile: (filePath) => {

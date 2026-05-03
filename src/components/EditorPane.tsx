@@ -55,6 +55,7 @@ export default function EditorPane({
   const { focusTile, setTileMissing } = useLayoutStore();
   const wordWrap = useLayoutStore((s) => s.wordWrap[tileId] ?? true);
   const focusedTileId = useLayoutStore((s) => s.focusedTileId);
+  const fontScale = useLayoutStore((s) => s.tileFontScale[tileId] ?? 1);
 
   // Load file content into the Y.Doc when filePath changes.
   useEffect(() => {
@@ -239,8 +240,9 @@ export default function EditorPane({
           flex: 1,
           overflow: "auto",
           fontFamily: "var(--font-editor)",
-          fontSize: "var(--font-size-editor-default)",
-        }}
+          fontSize: "calc(var(--font-size-editor-default) * var(--tile-font-scale, 1))",
+          "--tile-font-scale": fontScale,
+        } as React.CSSProperties}
       />
 
       {/* Status bar — live word/character count */}

@@ -73,6 +73,13 @@ deviations from the spec:
   describes all four sidebar sections. Phase 1 implements only the
   Explorer section. Search lands in Phase 3, References in Phase 3,
   Tags in a later phase (see Phase 6).
+- **Per-tile font size starts from CSS-variable defaults.** SPEC.md §4.3
+  specifies that `Ctrl/Cmd+=` / `Ctrl/Cmd+-` / `Ctrl/Cmd+0` adjust each
+  tile's font size from the project defaults defined in `project.toml`.
+  Phase 1 implements the shortcuts and per-tile scale state, but uses the
+  `--font-size-editor-default` / `--font-size-prose-default` CSS variables
+  (14 px / 16 px) as the base instead of reading project.toml defaults.
+  The `project.toml` default integration lands in Phase 6.
 
 ### Deliverables
 
@@ -537,7 +544,7 @@ SPEC.md §6.1.2.
       `api_key_source = "pass:<path>"`)
 - [ ] Recent projects list (startup screen + `File → Open Recent`)
 - [ ] `File → Project Settings` panel
-- [ ] Per-tile font size: `Cmd+=` / `Cmd+-` / `Cmd+0`
+- [ ] Per-tile font size base from `project.toml` defaults (`editor_font_size`, `preview_font_size`); replaces Phase 1 CSS-variable defaults
 - [ ] Dark mode and system-adaptive mode (`config.toml`)
 - [ ] `File → Close Project` returns to startup screen
 - [ ] Model selector in AI Chat tile

@@ -119,6 +119,31 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      // ---- Ctrl+=/-/0 — per-tile font size (SPEC.md §4.1, §4.3) ----
+      if (
+        e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey &&
+        !prefixActive.current && !nPrefixActive.current && !escPrefixActive.current
+      ) {
+        const focused = layout.focusedTileId;
+        if (focused) {
+          if (e.key === "=") {
+            e.preventDefault();
+            layout.incrementTileFontScale(focused);
+            return;
+          }
+          if (e.key === "-") {
+            e.preventDefault();
+            layout.decrementTileFontScale(focused);
+            return;
+          }
+          if (e.key === "0") {
+            e.preventDefault();
+            layout.resetTileFontScale(focused);
+            return;
+          }
+        }
+      }
+
       // ---- Ctrl+Shift+B — toggle sidebar ----
       if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
         e.preventDefault();

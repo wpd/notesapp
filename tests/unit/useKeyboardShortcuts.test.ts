@@ -33,6 +33,7 @@ function resetStore() {
     pendingDialog: null,
     cxPrefixActive: false,
     wordWrap: {},
+    tileFontScale: {},
   });
 }
 
@@ -358,5 +359,45 @@ describe("useKeyboardShortcuts — Esc-as-Meta prefix (direct command dispatch)"
     expect(view.state.selection.main.head).toBe(initialHead);
 
     document.body.removeChild(dialog);
+  });
+});
+
+describe("useKeyboardShortcuts — Ctrl+=/-/0 font size", () => {
+  beforeEach(() => {
+    seedTwoTiles();
+  });
+
+  it("Ctrl+= calls incrementTileFontScale on the focused tile", () => {
+    mountHook();
+    act(() => { fireKey("=", { ctrlKey: true }); });
+    expect(useLayoutStore.getState().tileFontScale["tile-a"]).toBeCloseTo(1.1);
+  });
+
+  it("Ctrl+- calls decrementTileFontScale on the focused tile", () => {
+    mountHook();
+    act(() => { fireKey("-", { ctrlKey: true }); });
+    expect(useLayoutStore.getState().tileFontScale["tile-a"]).toBeCloseTo(0.9);
+  });
+
+  it("Ctrl+0 calls resetTileFontScale on the focused tile", () => {
+    useLayoutStore.setState({ tileFontScale: { "tile-a": 1.5 } });
+    mountHook();
+    act(() => { fireKey("0", { ctrlKey: true }); });
+    expect(useLayoutStore.getState().tileFontScale["tile-a"]).toBeUndefined();
+  });
+
+  it("Ctrl+= calls preventDefault", () => {
+    mountHook();
+    const event = new KeyboardEvent("keydown", { key: "=", ctrlKey: true, bubbles: true, cancelable: true });
+    document.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("Ctrl+- does not fire when C-x prefix is active", () => {
+    mountHook();
+    act(() => { fireKey("x", { ctrlKey: true }); }); // arm C-x prefix
+    act(() => { fireKey("-", { ctrlKey: true }); }); // C-x C-- is unknown chord, clears prefix
+    // tileFontScale should remain untouched
+    expect(useLayoutStore.getState().tileFontScale["tile-a"]).toBeUndefined();
   });
 });

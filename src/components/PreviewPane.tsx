@@ -20,6 +20,7 @@ export default function PreviewPane({
 }: PreviewPaneProps): React.ReactElement {
   const { ydocs, getOrCreateYDoc } = useEditorStore();
   const { focusTile } = useLayoutStore();
+  const fontScale = useLayoutStore((s) => s.tileFontScale[tileId] ?? 1);
 
   const [html, setHtml] = useState<string>("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,11 +136,12 @@ export default function PreviewPane({
         background: "var(--color-bg-primary)",
         padding: "1rem 1.5rem",
         fontFamily: "var(--font-prose)",
-        fontSize: "var(--font-size-prose-default)",
+        fontSize: "calc(var(--font-size-prose-default) * var(--tile-font-scale, 1))",
+        "--tile-font-scale": fontScale,
         color: "var(--color-text-primary)",
         lineHeight: "1.65",
         cursor: "default",
-      }}
+      } as React.CSSProperties}
     >
       {filePath ? (
         <div

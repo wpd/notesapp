@@ -176,6 +176,12 @@ When you complete a task:
 4. List anything deferred, with a pointer to the relevant ROADMAP.md
    phase substitution if one applies.
 
+**Before declaring any phase complete**, you must run the smoke
+checklist in [`docs/SPEC_AUDIT.md`](docs/SPEC_AUDIT.md) against
+`npm run tauri dev` and paste a pass/fail summary alongside the test
+results. A phase is not complete until every `IMPLEMENTED` row in the
+audit table passes its smoke check in the running app.
+
 When uncertain about a product decision, **stop and ask** — do not
 invent UX behavior. If SPEC.md is silent, say so. If your planned
 implementation appears to deviate from SPEC.md, check ROADMAP.md first

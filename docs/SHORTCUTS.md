@@ -19,14 +19,17 @@ SPEC.md wins.
 | `C-x C-s` | Save current note |
 | `C-x C-c` | Quit application (prompts to save any unsaved buffers — Emacs convention, not in SPEC.md §4.1) |
 | `C-x C-f` | Open note by name (in a focused Editor tile) |
-| `C-x C-r` | Open reference by name (in a focused Reference tile) |
+| `C-x C-r` | Open reference by name (in a focused Reference tile) — Phase 3 |
 | `C-x n n` | Set current tile mode to **Editor** and open a note |
 | `C-x n p` | Set current tile mode to **Preview** and open a note (no-op on non-`.md` files) |
 | `C-x n r` | Set current tile mode to **Reference** and open a reference document |
 | `C-x n c` | Set current tile mode to **AI Chat** and open (or create) a session |
 | `C-x p` | Toggle pin on current Editor tile |
 | `Cmd+B` / `Ctrl+Shift+B` | Toggle activity sidebar |
-| `Ctrl/Cmd+Shift+F` | Global project search |
+| `Ctrl/Cmd+Shift+F` | Global project search (Phase 3) |
+| `Ctrl/Cmd+=` | Increase font size of focused tile |
+| `Ctrl/Cmd+-` | Decrease font size of focused tile |
+| `Ctrl/Cmd+0` | Reset font size of focused tile to default |
 
 The Editor↔Preview toggle in the tile title bar is a one-click
 equivalent of `C-x n n` / `C-x n p` on markdown-bound tiles.

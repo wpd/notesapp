@@ -19,6 +19,9 @@ function resetStore() {
     savedTreeBeforeMaximize: null,
     tileCounter: 0,
     pendingDialog: null,
+    cxPrefixActive: false,
+    wordWrap: {},
+    tileFontScale: {},
   });
   useProjectStore.setState({ projectDir: null });
   useEditorStore.setState({
@@ -654,6 +657,71 @@ describe("layoutStore", () => {
       expect(tiles["editor-2"].mode).toBe("missing");
       expect(tiles["editor-2"].filePath).toBeNull();
       expect(tiles["editor-2"].missingPath).toBe("/p/deleted.md");
+    });
+  });
+
+  describe("tileFontScale", () => {
+    it("defaults to absent (1.0) for a new tile", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const { tileFontScale, tiles } = useLayoutStore.getState();
+      const tileId = Object.keys(tiles)[0];
+      expect(tileFontScale[tileId]).toBeUndefined();
+    });
+
+    it("incrementTileFontScale increases scale by 0.1", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const tileId = Object.keys(useLayoutStore.getState().tiles)[0];
+      useLayoutStore.getState().incrementTileFontScale(tileId);
+      expect(useLayoutStore.getState().tileFontScale[tileId]).toBeCloseTo(1.1);
+    });
+
+    it("decrementTileFontScale decreases scale by 0.1", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const tileId = Object.keys(useLayoutStore.getState().tiles)[0];
+      useLayoutStore.getState().decrementTileFontScale(tileId);
+      expect(useLayoutStore.getState().tileFontScale[tileId]).toBeCloseTo(0.9);
+    });
+
+    it("resetTileFontScale removes the key", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const tileId = Object.keys(useLayoutStore.getState().tiles)[0];
+      useLayoutStore.getState().incrementTileFontScale(tileId);
+      useLayoutStore.getState().resetTileFontScale(tileId);
+      expect(useLayoutStore.getState().tileFontScale[tileId]).toBeUndefined();
+    });
+
+    it("clamps at 3.0 on increment", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const tileId = Object.keys(useLayoutStore.getState().tiles)[0];
+      useLayoutStore.setState({ tileFontScale: { [tileId]: 3.0 } });
+      useLayoutStore.getState().incrementTileFontScale(tileId);
+      expect(useLayoutStore.getState().tileFontScale[tileId]).toBeCloseTo(3.0);
+    });
+
+    it("clamps at 0.5 on decrement", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const tileId = Object.keys(useLayoutStore.getState().tiles)[0];
+      useLayoutStore.setState({ tileFontScale: { [tileId]: 0.5 } });
+      useLayoutStore.getState().decrementTileFontScale(tileId);
+      expect(useLayoutStore.getState().tileFontScale[tileId]).toBeCloseTo(0.5);
+    });
+
+    it("scale is per-tile — changing one tile does not affect another", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const ids = Object.keys(useLayoutStore.getState().tiles);
+      useLayoutStore.getState().incrementTileFontScale(ids[0]);
+      expect(useLayoutStore.getState().tileFontScale[ids[0]]).toBeCloseTo(1.1);
+      expect(useLayoutStore.getState().tileFontScale[ids[1]]).toBeUndefined();
+    });
+
+    it("closeTile removes the scale entry for the closed tile", () => {
+      useLayoutStore.getState().initDefaultLayout();
+      const { tiles } = useLayoutStore.getState();
+      // Need 2 tiles so close is allowed; both already exist after initDefaultLayout.
+      const ids = Object.keys(tiles);
+      useLayoutStore.getState().incrementTileFontScale(ids[0]);
+      useLayoutStore.getState().closeTile(ids[0]);
+      expect(useLayoutStore.getState().tileFontScale[ids[0]]).toBeUndefined();
     });
   });
 });
