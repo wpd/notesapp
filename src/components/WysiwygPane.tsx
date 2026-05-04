@@ -3,15 +3,16 @@
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
 /**
- * WysiwygPane — the bidirectional WYSIWYG Preview tile (SPEC.md §5.2).
+ * WysiwygPane — bidirectional WYSIWYG tile (SPEC.md §5.2).
  *
- * M1: read-only rendering driven by the forward bridge (Y.Text → Y.XmlFragment
- * → Tiptap).  The reverse bridge (user edits → Y.Text) lands in M2.
+ * Tiptap editor bound to Y.XmlFragment via ySyncPlugin.
+ * Forward bridge: Y.Text → Y.XmlFragment (CodeMirror edits appear here).
+ * Reverse bridge: Tiptap edits → Y.Text (round-trips back to CodeMirror).
  */
 
 import React, { useEffect, useRef, useMemo } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { ySyncPlugin } from "y-prosemirror";
+import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import { Extension } from "@tiptap/core";
 import { invoke } from "@tauri-apps/api/core";
 import useEditorStore from "../stores/editorStore";
@@ -20,6 +21,7 @@ import { createTiptapExtensions } from "../editor/tiptapExtensions";
 import { createTiptapBridge } from "../editor/tiptapBridge";
 import { splitFrontmatter } from "../utils/markdownPipeline";
 import { markdownToProseMirror } from "../editor/markdownToProseMirror";
+import WysiwygToolbar from "./WysiwygToolbar";
 
 interface WysiwygPaneProps {
   tileId: string;
@@ -30,19 +32,24 @@ export default function WysiwygPane({
   tileId,
   filePath,
 }: WysiwygPaneProps): React.ReactElement {
-  const { attachBridge, detachBridge } = useEditorStore();
+  const {
+    attachBridge,
+    detachBridge,
+    setDirty,
+    isContentClean,
+    setSavedContent,
+    startAutosave,
+    stopAutosave,
+  } = useEditorStore();
   const { focusTile, setTileMissing } = useLayoutStore();
   const fontScale = useLayoutStore((s) => s.tileFontScale[tileId] ?? 1);
 
-  // Hold a ref to the bridge so we can tear it down on cleanup
   const bridgeRef = useRef<ReturnType<typeof createTiptapBridge> | null>(null);
 
-  // Build extensions with ySyncPlugin once per filePath mount.
-  // We need the Y.Doc (specifically the xfrag) before the editor mounts so
-  // that ySyncPlugin can bind to it during editor creation.
-  const { extensions, xfragRef } = useMemo(() => {
+  // Build extensions including ySyncPlugin once per filePath mount.
+  const { extensions, xfragRef, ydocRef } = useMemo(() => {
     if (!filePath) {
-      return { extensions: createTiptapExtensions(), xfragRef: null };
+      return { extensions: createTiptapExtensions(), xfragRef: null, ydocRef: null };
     }
     const ydoc = attachBridge(filePath);
     const xfrag = ydoc.getXmlFragment("prosemirror");
@@ -50,18 +57,19 @@ export default function WysiwygPane({
     const ySync = Extension.create({
       name: "ySyncBridge",
       addProseMirrorPlugins() {
-        return [ySyncPlugin(xfrag)];
+        return [ySyncPlugin(xfrag), yUndoPlugin()];
       },
     });
 
     return {
       extensions: [...createTiptapExtensions(), ySync],
       xfragRef: xfrag,
+      ydocRef: ydoc,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath]);
 
-  // Compute initial content from Y.Text (if it's already populated)
+  // Compute initial content from Y.Text if already populated
   const initialContent = useMemo(() => {
     if (!filePath) return null;
     const ydoc = useEditorStore.getState().ydocs[filePath];
@@ -77,14 +85,14 @@ export default function WysiwygPane({
     {
       extensions,
       content: initialContent ?? { type: "doc", content: [] },
-      editable: false,
+      editable: true,
       immediatelyRender: false,
       onFocus: () => focusTile(tileId),
     },
     [filePath],
   );
 
-  // Load file into Y.Doc on mount / filePath change, then wire the bridge
+  // Load file, wire bridge, wire reverse-sync dirty tracking
   useEffect(() => {
     if (!filePath || !editor) return;
 
@@ -92,47 +100,73 @@ export default function WysiwygPane({
     const ydoc = state.ydocs[filePath] ?? state.getOrCreateYDoc(filePath);
     const ytext = ydoc.getText("content");
 
-    // Read file if Y.Doc is empty (first tile to open this note)
     const doMount = () => {
-      const bridge = createTiptapBridge({
-        ydoc,
-        schema: editor.schema,
-      });
+      const bridge = createTiptapBridge({ ydoc, schema: editor.schema });
       bridgeRef.current = bridge;
 
-      // Populate the fragment immediately with the current Y.Text content
       bridge.syncNow();
+
+      // Wire reverse bridge: editor updates → Y.Text
+      bridge.setEditor(editor);
+
+      // Track dirty state via Y.Text changes that originated from Tiptap edits
+      // (BRIDGE_ORIGIN_PROSE). Compare against savedContent to detect dirty.
+      const ytextObserver = (
+        _e: import("yjs").YTextEvent,
+        tx: import("yjs").Transaction,
+      ) => {
+        if (tx.origin !== "tiptap-bridge") return;
+        const full = ytext.toString();
+        if (isContentClean(filePath, full)) {
+          setDirty(tileId, false);
+          stopAutosave(tileId);
+          void invoke("delete_tmp", { path: filePath }).catch(() => {});
+        } else {
+          const wasClean = !useEditorStore.getState().isDirty(tileId);
+          setDirty(tileId, true);
+          if (wasClean) {
+            startAutosave(tileId, filePath);
+          }
+        }
+      };
+      ytext.observe(ytextObserver);
+
+      // Cleanup: remove observer, destroy bridge, detach ydoc
+      return () => {
+        ytext.unobserve(ytextObserver);
+        bridge.destroy();
+        bridgeRef.current = null;
+        stopAutosave(tileId);
+        setDirty(tileId, false);
+        detachBridge(filePath);
+      };
     };
 
     if (ytext.length === 0) {
+      let cleanup: (() => void) | undefined;
       invoke<string>("read_note", { path: filePath })
         .then((content) => {
           if (ytext.length === 0) {
-            state.setSavedContent(filePath, content);
+            setSavedContent(filePath, content);
             ydoc.transact(() => {
               ytext.insert(0, content);
             });
           }
-          doMount();
+          cleanup = doMount();
         })
         .catch(() => {
           setTileMissing(tileId, filePath);
         });
+      return () => { cleanup?.(); };
     } else {
-      doMount();
+      const cleanup = doMount();
+      return cleanup ?? (() => {});
     }
-
-    return () => {
-      bridgeRef.current?.destroy();
-      bridgeRef.current = null;
-      detachBridge(filePath);
-    };
-  // filePath and editor identity are the deps; editor is stable across re-renders
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath, editor]);
 
-  // Discard the xfragRef — used only via ySyncPlugin
   void xfragRef;
+  void ydocRef;
 
   if (!filePath) {
     return (
@@ -163,20 +197,30 @@ export default function WysiwygPane({
       onClick={() => focusTile(tileId)}
       style={{
         height: "100%",
-        overflow: "auto",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
         background: "var(--color-bg-primary)",
-        padding: "1rem 1.5rem",
-        fontFamily: "var(--font-prose)",
-        fontSize: `calc(var(--font-size-prose-default) * ${fontScale})`,
-        color: "var(--color-text-primary)",
-        lineHeight: "1.65",
       }}
     >
-      <EditorContent
-        data-testid={`preview-content-${tileId}`}
-        editor={editor}
-        className="prose-content wysiwyg-content"
-      />
+      <WysiwygToolbar editor={editor} tileId={tileId} />
+      <div
+        style={{
+          flex: 1,
+          overflow: "auto",
+          padding: "1rem 1.5rem",
+          fontFamily: "var(--font-prose)",
+          fontSize: `calc(var(--font-size-prose-default) * ${fontScale})`,
+          color: "var(--color-text-primary)",
+          lineHeight: "1.65",
+        }}
+      >
+        <EditorContent
+          data-testid={`preview-content-${tileId}`}
+          editor={editor}
+          className="prose-content wysiwyg-content"
+        />
+      </div>
     </div>
   );
 }
