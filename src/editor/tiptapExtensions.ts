@@ -8,6 +8,10 @@ import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
 import { MathInline, MathDisplay } from "./nodes/KatexNode";
 import { MermaidBlock } from "./nodes/MermaidNode";
 import { DrawingBlock } from "./nodes/DrawingNode";
@@ -36,6 +40,10 @@ export function createTiptapExtensions(): Extensions {
     Underline,
     TaskList,
     TaskItem.configure({ nested: true }),
+    Table.configure({ resizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
     MathInline,
     MathDisplay,
     MermaidBlock,

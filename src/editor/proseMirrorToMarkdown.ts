@@ -18,6 +18,26 @@ import {
 import type { Node as PMNode, Mark } from "@tiptap/pm/model";
 import type { MarkdownSerializerState } from "prosemirror-markdown";
 
+function cellText(cell: PMNode): string {
+  let out = "";
+  cell.forEach((block) => {
+    if (block.type.name !== "paragraph") return;
+    block.forEach((inline) => {
+      if (inline.type.name !== "text") return;
+      const raw = (inline.text ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+      const hasBold = inline.marks.some((m) => m.type.name === "bold");
+      const hasItalic = inline.marks.some((m) => m.type.name === "italic");
+      const hasCode = inline.marks.some((m) => m.type.name === "code");
+      let s = raw;
+      if (hasCode) s = `\`${s}\``;
+      if (hasBold) s = `**${s}**`;
+      if (hasItalic) s = `_${s}_`;
+      out += s;
+    });
+  });
+  return out;
+}
+
 const customSerializer = new MarkdownSerializer(
   {
     // ── Inherit all default node handlers ──────────────────────────────────
@@ -76,6 +96,33 @@ const customSerializer = new MarkdownSerializer(
       state.write(checkbox);
       state.renderContent(node);
     },
+
+    // ── GFM table ────────────────────────────────────────────────────────────
+    table(state, node) {
+      const rows: string[][] = [];
+      node.forEach((row) => {
+        const cells: string[] = [];
+        row.forEach((cell) => { cells.push(cellText(cell)); });
+        rows.push(cells);
+      });
+      if (rows.length === 0) return;
+      const colCount = Math.max(...rows.map((r) => r.length));
+      const pad = (row: string[]) =>
+        Array.from<string>({ length: colCount }).map((_, i) => row[i] ?? "");
+      state.write("| " + pad(rows[0]).join(" | ") + " |");
+      state.ensureNewLine();
+      state.write("| " + pad(rows[0]).map(() => "---").join(" | ") + " |");
+      state.ensureNewLine();
+      for (let i = 1; i < rows.length; i++) {
+        state.write("| " + pad(rows[i]).join(" | ") + " |");
+        if (i < rows.length - 1) state.ensureNewLine();
+      }
+      state.closeBlock(node);
+    },
+    // Children are rendered by the table handler above; register as no-ops
+    tableRow(_state, _node) {},
+    tableHeader(_state, _node) {},
+    tableCell(_state, _node) {},
 
     // ── Code block with language ─────────────────────────────────────────────
     codeBlock(state, node) {

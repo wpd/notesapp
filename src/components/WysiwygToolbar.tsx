@@ -222,6 +222,53 @@ export default function WysiwygToolbar({
 
       <Separator />
 
+      {/* Table */}
+      <ToolbarButton
+        title="Insert table"
+        onClick={() =>
+          editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        }
+      >
+        ⊞
+      </ToolbarButton>
+      <ToolbarButton
+        title="Add row after"
+        onClick={() => editor.chain().focus().addRowAfter().run()}
+        disabled={!editor.can().addRowAfter()}
+      >
+        +R
+      </ToolbarButton>
+      <ToolbarButton
+        title="Add column after"
+        onClick={() => editor.chain().focus().addColumnAfter().run()}
+        disabled={!editor.can().addColumnAfter()}
+      >
+        +C
+      </ToolbarButton>
+      <ToolbarButton
+        title="Delete row"
+        onClick={() => editor.chain().focus().deleteRow().run()}
+        disabled={!editor.can().deleteRow()}
+      >
+        -R
+      </ToolbarButton>
+      <ToolbarButton
+        title="Delete column"
+        onClick={() => editor.chain().focus().deleteColumn().run()}
+        disabled={!editor.can().deleteColumn()}
+      >
+        -C
+      </ToolbarButton>
+      <ToolbarButton
+        title="Delete table"
+        onClick={() => editor.chain().focus().deleteTable().run()}
+        disabled={!editor.can().deleteTable()}
+      >
+        ✕⊞
+      </ToolbarButton>
+
+      <Separator />
+
       {/* Undo / Redo (provided by yUndoPlugin) */}
       <ToolbarButton
         title="Undo"
