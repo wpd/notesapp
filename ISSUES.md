@@ -153,4 +153,46 @@ buffer picker. Update `docs/SHORTCUTS.md` and `docs/SPEC_AUDIT.md` when done.
 
 ---
 
+## ISSUE-007 — Mermaid click-to-navigate-source not implemented (SPEC.md §5.2 line 498)
+
+**Status:** Deferred — Phase 3
+
+**Symptom:** SPEC.md §5.2 describes clicking a Mermaid diagram in a Preview tile
+navigating to the corresponding code block in the sibling Editor tile. This
+is not implemented.
+
+**Root cause:** Requires cross-tile communication (WYSIWYG → Editor cursor jump)
+and the ability to resolve a Mermaid node's source position in Y.Text. Deferred
+in ROADMAP.md Phase 2 substitutions.
+
+**Resolution path:** Implement in Phase 3.
+
+---
+
+## ISSUE-008 — SPEC.md §5.2 drawing fence example mismatches §3.2 form
+
+**Status:** Open — SPEC.md cleanup needed
+
+**Symptom:** SPEC.md §5.2 shows a drawing fence example that uses a full path,
+while §3.2 uses the canonical `<stem>.NNNN.drawing` basename. The implementation
+follows §3.2. The §5.2 example should be updated to match.
+
+**Resolution path:** Update SPEC.md §5.2 example to use `<stem>.NNNN.drawing`
+basename form in a future SPEC.md maintenance pass.
+
+---
+
+## ISSUE-009 — SPEC.md §4.1 master shortcut table missing `C-c d`
+
+**Status:** Open — SPEC.md update needed
+
+**Symptom:** The `C-c d` shortcut (insert drawing block in Preview tile, Phase 2 M4)
+is implemented in `useKeyboardShortcuts.ts` and documented in `docs/SHORTCUTS.md`
+but not yet in the SPEC.md §4.1 master table.
+
+**Resolution path:** Add `C-c d` row to SPEC.md §4.1 in a future SPEC.md
+maintenance pass.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

@@ -113,4 +113,60 @@ Tauri v2 is the confirmed choice. Do not revisit this.
 
 ---
 
+## 7. WYSIWYG Preview Tile — Phase 2 Resolutions (SPEC.md §5.2)
+
+### 7.1 Drawing NNNN Allocation
+
+Sidecar filenames use 4-digit zero-padded NNNN: `<note-stem>.NNNN.drawing`.
+Allocation: `max(existing NNNN for this note) + 1`; starts at 1 if none
+exist. Numbers are never reused; orphan numbers (from deleted fences) are
+tolerated and gaps are preserved. The Rust command `next_drawing_number`
+implements this.
+
+### 7.2 Sidecar JSON Shape
+
+Native Excalidraw export format:
+```json
+{ "type": "excalidraw", "version": 2, "source": "notesapp",
+  "elements": [], "appState": {}, "files": {} }
+```
+
+### 7.3 Orphan Cleanup on Fence Delete
+
+When a `drawing`-fenced block is deleted from the markdown, the sidecar
+file is **kept on disk** (preserves undo; user can recover). GC of orphan
+sidecars is out of Phase 2 scope.
+
+### 7.4 Sidecar Reference in Fence
+
+The inner fence content is the **basename only**: `<stem>.NNNN.drawing`.
+This resolves the SPEC.md §3.2 vs §5.2 example mismatch in favor of §3.2.
+`DrawingBlock` resolves the basename against the note's directory at runtime.
+
+### 7.5 Sidecar Autosave Model
+
+Mirrors the `.md` autosave pattern: Excalidraw onChange (debounced 30 s)
+writes `<sidecar>.drawing.tmp`. On Escape/click-outside exit from edit
+mode the `.drawing` file is written and the `.tmp` is deleted.
+
+### 7.6 Front-matter in WYSIWYG
+
+Front-matter is never visible or editable in the Tiptap editor. It is
+stripped by `splitFrontmatter` before the body is passed to
+`markdownToProseMirror`, stored in `Y.Map("meta")`, and prepended back on
+every reverse-bridge serialize.
+
+### 7.7 Mermaid Click-to-Navigate-Source (SPEC.md §5.2 line 498)
+
+Deferred to a later phase. Filed in ISSUES.md.
+
+### 7.8 SPEC.md Cleanup Tasks
+
+- SPEC.md §5.2 drawing fence example should be updated to match §3.2
+  (`<stem>.NNNN.drawing` basename form). Filed in ISSUES.md.
+- SPEC.md §4.1 master shortcut table should add `C-c d` row. Filed in
+  ISSUES.md.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

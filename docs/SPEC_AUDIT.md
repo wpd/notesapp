@@ -48,8 +48,9 @@ and layout shortcuts), §5.1 (editor-internal Emacs bindings), and §5.5
 | `Ctrl/Cmd+=` | Increase font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:131`; `layoutStore.ts:incrementTileFontScale`; `useKeyboardShortcuts.test.ts:368` |
 | `Ctrl/Cmd+-` | Decrease font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:136`; `layoutStore.ts:decrementTileFontScale`; `useKeyboardShortcuts.test.ts:373` |
 | `Ctrl/Cmd+0` | Reset font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:141`; `layoutStore.ts:resetTileFontScale`; `useKeyboardShortcuts.test.ts:378` |
-| `C-c C-n` | Next Markdown header in Editor tile | DEFERRED | ROADMAP.md Phase 5 |
-| `C-c C-p` | Previous Markdown header in Editor tile | DEFERRED | ROADMAP.md Phase 5 |
+| `C-c C-n` | Next Markdown header in Editor tile | IMPLEMENTED | `useKeyboardShortcuts.ts`; `useKeyboardShortcuts.test.ts` |
+| `C-c C-p` | Previous Markdown header in Editor tile | IMPLEMENTED | `useKeyboardShortcuts.ts`; `useKeyboardShortcuts.test.ts` |
+| `C-c d` | Insert drawing block in focused Preview tile | IMPLEMENTED | `useKeyboardShortcuts.ts` (Phase 2 M4); `wysiwygRegistry.ts`; `drawings.rs` |
 
 ## §5.1 — Editor-Internal Emacs Bindings
 
@@ -62,6 +63,25 @@ and layout shortcuts), §5.1 (editor-internal Emacs bindings), and §5.5
 | `M-%` / `M-C-%` query-replace | DEFERRED | ROADMAP.md Phase 5 |
 | Keyboard macros (`C-x ( ) e`) | DEFERRED | ROADMAP.md Phase 5 |
 | Rectangle operations | DEFERRED | ROADMAP.md Phase 5 |
+
+## §5.2 — WYSIWYG Preview Tile (Phase 2)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| Bidirectional WYSIWYG editing (Tiptap + y-prosemirror) | IMPLEMENTED | `WysiwygPane.tsx`; `tiptapBridge.ts`; `tiptapExtensions.ts` |
+| Forward bridge: Y.Text → Y.XmlFragment → Tiptap | IMPLEMENTED | `tiptapBridge.ts:syncForward`; `tiptapBridge.forward.test.ts` |
+| Reverse bridge: Tiptap → Y.Text (debounced 150 ms) | IMPLEMENTED | `tiptapBridge.ts:syncReverse`; `tiptapBridge.roundtrip.test.ts` |
+| Formatting toolbar (Bold/Italic/Underline/Strike/Code, H1–H4, Blockquote, OL/UL/Task, HR, Link) | IMPLEMENTED | `WysiwygToolbar.tsx` |
+| Table editing (insert/add row+col/delete row+col) | IMPLEMENTED | `WysiwygToolbar.tsx`; `tiptapExtensions.ts`; `proseMirrorToMarkdown.tables.test.ts` |
+| KaTeX math rendering (inline $...$ and display $$...$$) | IMPLEMENTED | `KatexNode.tsx`; `markdownToProseMirror.ts` |
+| Mermaid diagram rendering | IMPLEMENTED | `MermaidNode.tsx`; `markdownToProseMirror.ts` |
+| Drawing blocks (Excalidraw canvas, sidecar .drawing files) | IMPLEMENTED | `DrawingNode.tsx`; `drawings.rs`; `drawingSidecar.ts` |
+| Drawing sidecar autosave (30s debounce → .drawing.tmp) | IMPLEMENTED | `DrawingNode.tsx:handleChange`; `drawings.rs:autosave_drawing` |
+| Front-matter hidden from WYSIWYG, preserved in Y.Map("meta") | IMPLEMENTED | `tiptapBridge.ts:splitFrontmatter`; round-trip test covers body-only |
+| Rich paste: HTML preserves formatting; markdown text converts | IMPLEMENTED | `WysiwygPane.tsx:transformPastedText`; uses `renderMarkdownSync` |
+| Per-tile font scale in WYSIWYG tile | IMPLEMENTED | `WysiwygPane.tsx:fontScale` CSS variable |
+| Dirty / autosave / save wired to editorStore | IMPLEMENTED | `WysiwygPane.tsx:ytextObserver`; `BRIDGE_ORIGIN_PROSE` detection |
+| Mermaid click-to-navigate-source | DEFERRED | ROADMAP.md Phase 3; filed in ISSUES.md |
 
 ## §5.5 — Missing Tile
 
@@ -123,6 +143,22 @@ result here before declaring phase completion.
 25. Delete a file that is bound to an open tile — tile transitions to Missing mode.
 26. Click Locate… — OS picker scopes to the file's directory.
 27. Restart app pointing at a project where a bound file is gone — tile opens in Missing mode.
+
+**WYSIWYG tile (Phase 2):**
+28. Switch a tile to Preview mode — toolbar appears, content renders.
+29. Type in the Preview tile — the sibling Editor tile updates within 500 ms.
+30. Type in the Editor tile — the Preview tile updates within 500 ms.
+31. Bold button (or Ctrl+B) — selected text becomes bold; re-click removes bold.
+32. H2 button — current paragraph becomes a heading.
+33. Insert Table button — 3×3 table appears; add/delete row/col buttons work inside table.
+34. Paste markdown text (e.g. `**bold** _italic_ ## heading`) — formatting is preserved.
+35. Paste HTML from browser — formatting (bold, lists) preserved.
+36. C-c d (or ✏ toolbar button) — drawing block inserted; double-click opens Excalidraw.
+37. Edit in Excalidraw, press Escape — drawing saved; reopen note shows saved drawing.
+38. Dirty dot appears after typing in Preview tile; `C-x C-s` saves and clears it.
+39. Front-matter (`---\ntitle: ...\n---`) is not visible in the WYSIWYG editor.
+40. Mermaid code block renders as a diagram in the WYSIWYG tile.
+41. KaTeX (`$E=mc^2$`) renders as math inline in the WYSIWYG tile.
 
 ---
 

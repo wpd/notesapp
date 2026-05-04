@@ -104,4 +104,57 @@ primary test word.
 
 ---
 
+## Test 5 — Excalidraw Canvas Renders (Phase 2 M4)
+
+**Why it matters:** Excalidraw uses `<canvas>` elements whose pixel
+output is outside WebDriver's reach. Visual correctness must be checked
+manually on the target platform.
+
+**Steps:**
+
+1. Open a note in Preview mode.
+2. Press `C-c d` (or click the ✏ toolbar button) — a drawing block appears.
+3. Double-click the drawing block — Excalidraw opens in edit mode with an empty canvas.
+4. Draw a simple shape (e.g. a rectangle).
+5. Press `Escape` — edit mode exits, drawing block returns to view mode.
+6. Verify the shape is visible in the read-only canvas.
+7. Save the note (`C-x C-s`) and reopen it — the drawing must still be visible.
+
+**Expected:** Canvas renders at each step; no blank white box or error.
+
+**Automated coverage:** `tests/unit/drawingSidecar.test.ts` and
+`src-tauri/src/commands/drawings.rs` unit tests cover sidecar path helpers
+and Rust I/O. Canvas pixel output is inherently macOS/WebKit-dependent.
+
+---
+
+## Test 6 — Rich Paste Preserves Formatting (Phase 2 M5)
+
+**Why it matters:** The clipboard paste transformation
+(`transformPastedText` in `WysiwygPane.tsx`) converts pasted markdown
+text into formatted content. Whether the resulting HTML paste is accepted
+by WKWebView depends on how WKWebView handles `ClipboardEvent` data.
+
+**Steps:**
+
+1. Open a note in Preview mode.
+2. Copy the following markdown text from any source (e.g. a terminal):
+   ```
+   ## Section Title
+   **bold text** and _italic text_
+   - Bullet one
+   - Bullet two
+   ```
+3. Paste (`Cmd+V`) into the WYSIWYG editor.
+4. Check that the pasted content appears formatted — heading renders as
+   a heading, bold/italic apply, bullets appear as a list.
+
+**Expected:** Formatting is preserved. Plain unformatted text must not appear.
+
+**Automated coverage:** `transformPastedText` logic is unit-tested
+indirectly via the `renderMarkdownSync` path in `markdownPipeline.test.ts`.
+Actual clipboard integration requires macOS/WKWebView.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

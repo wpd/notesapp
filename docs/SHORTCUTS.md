@@ -30,8 +30,9 @@ SPEC.md wins.
 | `Ctrl/Cmd+=` | Increase font size of focused tile |
 | `Ctrl/Cmd+-` | Decrease font size of focused tile |
 | `Ctrl/Cmd+0` | Reset font size of focused tile to default |
-| `C-c C-n` | Move cursor to next visible Markdown header in Editor tile (Phase 5) |
-| `C-c C-p` | Move cursor to previous visible Markdown header in Editor tile (Phase 5) |
+| `C-c C-n` | Move cursor to next visible Markdown header in Editor tile |
+| `C-c C-p` | Move cursor to previous visible Markdown header in Editor tile |
+| `C-c d` | Insert a new Excalidraw drawing block in focused Preview tile (Phase 2) |
 
 The Editor↔Preview toggle in the tile title bar is a one-click
 equivalent of `C-x n n` / `C-x n p` on markdown-bound tiles.
