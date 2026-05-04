@@ -45,7 +45,8 @@ export default function EditorPane({
   const [charCount, setCharCount] = useState(0);
 
   const {
-    getOrCreateYDoc,
+    attachBridge,
+    detachBridge,
     setDirty,
     startAutosave,
     stopAutosave,
@@ -60,7 +61,7 @@ export default function EditorPane({
   // Load file content into the Y.Doc when filePath changes.
   useEffect(() => {
     if (!filePath) return;
-    const ydoc = getOrCreateYDoc(filePath);
+    const ydoc = attachBridge(filePath);
     const ytext = ydoc.getText("content");
 
     if (ytext.length === 0) {
@@ -80,7 +81,10 @@ export default function EditorPane({
           setTileMissing(tileId, filePath);
         });
     }
-  }, [filePath, getOrCreateYDoc, setSavedContent, tileId, setTileMissing]);
+    return () => {
+      detachBridge(filePath);
+    };
+  }, [filePath, attachBridge, detachBridge, setSavedContent, tileId, setTileMissing]);
 
   // Build / rebuild the CodeMirror view
   useEffect(() => {
@@ -91,7 +95,7 @@ export default function EditorPane({
       viewRef.current = null;
     }
 
-    const ydoc = filePath ? getOrCreateYDoc(filePath) : null;
+    const ydoc = filePath ? useEditorStore.getState().ydocs[filePath] : null;
     const ytext = ydoc?.getText("content") ?? null;
 
     const updateCounts = (text: string) => {

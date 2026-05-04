@@ -90,6 +90,26 @@ export async function renderMarkdown(markdown: string): Promise<string> {
 }
 
 /**
+ * Split a markdown document into its YAML front-matter block and body.
+ *
+ * Recognises the standard front-matter envelope: a `---` fence that opens on
+ * the very first line and closes on a subsequent `---` line.  Everything
+ * before the first non-front-matter character is `frontmatter`; the rest is
+ * `body`.  If no valid front-matter block is present, `frontmatter` is `""`
+ * and `body` is the entire input.
+ */
+export function splitFrontmatter(text: string): {
+  frontmatter: string;
+  body: string;
+} {
+  const match = /^(---\n[\s\S]*?\n---\n?)/.exec(text);
+  if (match) {
+    return { frontmatter: match[1], body: text.slice(match[1].length) };
+  }
+  return { frontmatter: "", body: text };
+}
+
+/**
  * Synchronous version — for cases where async is not feasible.
  * Note: some rehype plugins are async-only; this may not apply KaTeX fully.
  */

@@ -22,9 +22,26 @@ interface EditorStoreState {
    * value the buffer is back to its saved state (SPEC.md §5.1, §9.1).
    */
   savedContents: Record<string, string>;
+  /**
+   * Reference counts for Y.Docs.  Each tile (Editor or WYSIWYG) calls
+   * attachBridge on mount and detachBridge on unmount.  When the count
+   * reaches zero the Y.Doc is destroyed (SPEC.md §5.2 "released when the
+   * last tile unbinds").
+   */
+  bridgeRefcounts: Record<string, number>;
 
   getOrCreateYDoc: (filePath: string) => Y.Doc;
   releaseYDoc: (filePath: string) => void;
+  /**
+   * Increment the reference count for the Y.Doc at `filePath`, creating the
+   * doc if it does not exist yet.  Returns the shared Y.Doc.
+   */
+  attachBridge: (filePath: string) => Y.Doc;
+  /**
+   * Decrement the reference count for the Y.Doc at `filePath`.  When the
+   * count reaches zero the doc is destroyed.
+   */
+  detachBridge: (filePath: string) => void;
   setDirty: (tileId: string, dirty: boolean) => void;
   isDirty: (tileId: string) => boolean;
   /**
@@ -51,6 +68,7 @@ const useEditorStore = create<EditorStoreState>((set, get) => ({
   autosaveTimers: {},
   cursorLines: {},
   savedContents: {},
+  bridgeRefcounts: {},
 
   getOrCreateYDoc: (filePath: string) => {
     const existing = get().ydocs[filePath];
@@ -68,10 +86,37 @@ const useEditorStore = create<EditorStoreState>((set, get) => ({
     if (doc) {
       doc.destroy();
       set((state) => {
-        const next = { ...state.ydocs };
-        delete next[filePath];
-        return { ydocs: next };
+        const nextDocs = { ...state.ydocs };
+        delete nextDocs[filePath];
+        const nextRefs = { ...state.bridgeRefcounts };
+        delete nextRefs[filePath];
+        return { ydocs: nextDocs, bridgeRefcounts: nextRefs };
       });
+    }
+  },
+
+  attachBridge: (filePath: string) => {
+    const doc = get().getOrCreateYDoc(filePath);
+    set((state) => ({
+      bridgeRefcounts: {
+        ...state.bridgeRefcounts,
+        [filePath]: (state.bridgeRefcounts[filePath] ?? 0) + 1,
+      },
+    }));
+    return doc;
+  },
+
+  detachBridge: (filePath: string) => {
+    const count = get().bridgeRefcounts[filePath] ?? 0;
+    if (count <= 1) {
+      get().releaseYDoc(filePath);
+    } else {
+      set((state) => ({
+        bridgeRefcounts: {
+          ...state.bridgeRefcounts,
+          [filePath]: count - 1,
+        },
+      }));
     }
   },
 

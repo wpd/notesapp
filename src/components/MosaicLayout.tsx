@@ -9,7 +9,7 @@ import "react-mosaic-component/react-mosaic-component.css";
 import useLayoutStore from "../stores/layoutStore";
 import TileBar from "./TileBar";
 import EditorPane from "./EditorPane";
-import PreviewPane from "./PreviewPane";
+import WysiwygPane from "./WysiwygPane";
 import MissingTile from "./MissingTile";
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -47,7 +47,7 @@ function TileContent({
     case "editor":
       return <EditorPane tileId={tileId} filePath={tile.filePath} />;
     case "preview":
-      return <PreviewPane tileId={tileId} filePath={tile.filePath} />;
+      return <WysiwygPane tileId={tileId} filePath={tile.filePath} />;
     case "missing":
       return (
         <MissingTile
