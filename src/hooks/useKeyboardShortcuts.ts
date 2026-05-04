@@ -12,10 +12,13 @@ import {
   deleteGroupBackward,
 } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
+import { invoke } from "@tauri-apps/api/core";
 import useLayoutStore, { TileMode } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 import useProjectStore from "../stores/projectStore";
 import { getEditorView } from "../editor/editorViewRegistry";
+import { getWysiwygEditor } from "../editor/wysiwygRegistry";
+import { noteStem, drawingFilename } from "../utils/drawingSidecar";
 
 interface ShortcutOptions {
   onOpenBufferSwitcher: (tileId: string, pickerMode: string) => void;
@@ -60,6 +63,8 @@ export function useKeyboardShortcuts({
   const prefixActive = useRef(false);
   // Track C-x n prefix (mode-switch chord)
   const nPrefixActive = useRef(false);
+  // Track C-c prefix (for C-c d insert-drawing in preview tiles)
+  const ccPrefixActive = useRef(false);
   // Track Esc-as-Meta prefix (Esc, then a key = Alt+key)
   const escPrefixActive = useRef(false);
 
@@ -73,6 +78,7 @@ export function useKeyboardShortcuts({
       const clearPrefix = () => {
         prefixActive.current = false;
         nPrefixActive.current = false;
+        ccPrefixActive.current = false;
         escPrefixActive.current = false;
         if (useLayoutStore.getState().cxPrefixActive) {
           layout.setCxPrefixActive(false);
@@ -149,6 +155,47 @@ export function useKeyboardShortcuts({
         e.preventDefault();
         layout.toggleSidebar();
         clearPrefix();
+        return;
+      }
+
+      // ---- C-c d — insert drawing (preview tiles only) ----
+      // Arm C-c prefix only when focused tile is in preview mode so that
+      // Ctrl+C (copy) in editor tiles is not intercepted.
+      if (e.ctrlKey && e.key === "c" && !prefixActive.current && !nPrefixActive.current) {
+        const tile = layout.focusedTileId ? layout.tiles[layout.focusedTileId] : null;
+        if (tile?.mode === "preview" && tile.filePath) {
+          e.preventDefault();
+          ccPrefixActive.current = true;
+          return;
+        }
+      }
+
+      if (ccPrefixActive.current && e.key === "d" && !e.ctrlKey) {
+        ccPrefixActive.current = false;
+        e.preventDefault();
+        const focused = layout.focusedTileId;
+        if (!focused) return;
+        const tile = layout.tiles[focused];
+        if (!tile || tile.mode !== "preview" || !tile.filePath) return;
+        const notePath = tile.filePath;
+        const wysiwygEditor = getWysiwygEditor(focused);
+        if (!wysiwygEditor) return;
+        invoke<number>("next_drawing_number", { notePath })
+          .then((n) => {
+            const stem = noteStem(notePath);
+            const filename = drawingFilename(stem, n);
+            wysiwygEditor.chain().focus().insertContent({
+              type: "drawingBlock",
+              attrs: { filename },
+            }).run();
+          })
+          .catch(console.error);
+        return;
+      }
+
+      if (ccPrefixActive.current) {
+        ccPrefixActive.current = false;
+        e.preventDefault();
         return;
       }
 

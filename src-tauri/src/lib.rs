@@ -43,6 +43,14 @@ pub fn run() {
             commands::notes::file_exists,
             commands::watcher::start_file_watcher,
             commands::spellcheck::check_spelling,
+            commands::drawings::read_drawing,
+            commands::drawings::write_drawing,
+            commands::drawings::delete_drawing,
+            commands::drawings::autosave_drawing,
+            commands::drawings::delete_drawing_tmp,
+            commands::drawings::list_drawings,
+            commands::drawings::next_drawing_number,
+            commands::drawings::drawing_path,
         ])
         .on_page_load(|window, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {

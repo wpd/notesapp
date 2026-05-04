@@ -21,6 +21,7 @@ import { createTiptapExtensions } from "../editor/tiptapExtensions";
 import { createTiptapBridge } from "../editor/tiptapBridge";
 import { splitFrontmatter } from "../utils/markdownPipeline";
 import { markdownToProseMirror } from "../editor/markdownToProseMirror";
+import { registerWysiwygEditor, unregisterWysiwygEditor } from "../editor/wysiwygRegistry";
 import WysiwygToolbar from "./WysiwygToolbar";
 
 interface WysiwygPaneProps {
@@ -91,6 +92,23 @@ export default function WysiwygPane({
     },
     [filePath],
   );
+
+  // Register editor in wysiwyg registry for C-c d shortcut dispatch
+  useEffect(() => {
+    if (!editor) return;
+    registerWysiwygEditor(tileId, editor);
+    return () => { unregisterWysiwygEditor(tileId); };
+  }, [tileId, editor]);
+
+  // Provide note directory to DrawingBlock node views via editor storage
+  useEffect(() => {
+    if (!editor || !filePath) return;
+    const dir = filePath.split("/").slice(0, -1).join("/");
+    const storage = editor.storage as unknown as Record<string, Record<string, string>>;
+    if (storage.drawingBlock) {
+      storage.drawingBlock.noteDirectory = dir;
+    }
+  }, [editor, filePath]);
 
   // Load file, wire bridge, wire reverse-sync dirty tracking
   useEffect(() => {

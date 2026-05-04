@@ -11,6 +11,9 @@
  */
 
 import React, { useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import useLayoutStore from "../stores/layoutStore";
+import { noteStem, drawingFilename } from "../utils/drawingSidecar";
 
 interface ToolbarButtonProps {
   onClick: () => void;
@@ -78,7 +81,25 @@ interface WysiwygToolbarProps {
 
 export default function WysiwygToolbar({
   editor,
+  tileId,
 }: WysiwygToolbarProps): React.ReactElement {
+  const insertDrawing = useCallback(() => {
+    if (!editor) return;
+    const tile = useLayoutStore.getState().tiles[tileId];
+    const notePath = tile?.filePath;
+    if (!notePath) return;
+    invoke<number>("next_drawing_number", { notePath })
+      .then((n) => {
+        const stem = noteStem(notePath);
+        const filename = drawingFilename(stem, n);
+        editor.chain().focus().insertContent({
+          type: "drawingBlock",
+          attrs: { filename },
+        }).run();
+      })
+      .catch(console.error);
+  }, [editor, tileId]);
+
   const setLink = useCallback(() => {
     if (!editor) return;
     const prev = editor.getAttributes("link").href as string | undefined;
@@ -265,6 +286,16 @@ export default function WysiwygToolbar({
         disabled={!editor.can().deleteTable()}
       >
         ✕⊞
+      </ToolbarButton>
+
+      <Separator />
+
+      {/* Drawing */}
+      <ToolbarButton
+        title="Insert drawing (C-c d)"
+        onClick={insertDrawing}
+      >
+        ✏
       </ToolbarButton>
 
       <Separator />

@@ -28,6 +28,7 @@
     "@codemirror/language-data": "^6.5.2",
     "@codemirror/state": "^6.4.1",
     "@codemirror/view": "^6.35.3",
+    "@excalidraw/excalidraw": "^0.18.1",
     "@replit/codemirror-emacs": "^6.1.0",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
