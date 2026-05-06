@@ -169,4 +169,38 @@ Deferred to a later phase. Filed in ISSUES.md.
 
 ---
 
+## 8. Emacs Keybindings in the WYSIWYG Editor (SPEC.md §5.2)
+
+SPEC.md §5.1 specifies Emacs keybindings for the Editor tile (CodeMirror,
+implemented via `@replit/codemirror-emacs`). SPEC.md §5.2 originally said
+nothing about keybindings in the WYSIWYG Preview tile. The user expectation
+is that movement commands — including `Esc <` / `Esc >` — work identically
+in the WYSIWYG editor. SPEC.md was updated to make this explicit.
+
+**Implementation choice:** A Tiptap Extension (`EmacsKeymap`) is added to
+`src/editor/emacsKeymap.ts` and registered in `src/editor/tiptapExtensions.ts`.
+It registers ProseMirror keyboard shortcuts for the full set of Emacs motion,
+kill/yank, mark/region, undo, and cancel bindings. Character and line-block
+motion (`C-f/b/a/e`) uses `prosemirror-commands`; line motion (`C-n/C-p`)
+and word motion (`M-f/b/d/M-Backspace`) use `window.getSelection().modify()`
+(guarded for environments that don't implement it, such as jsdom).
+
+**Esc-as-Meta dispatch** in `src/hooks/useKeyboardShortcuts.ts` is extended
+to route to the Tiptap editor (via `getWysiwygEditor`) when the focused tile
+is in `preview` mode, and to CodeMirror (via `getEditorView`) otherwise.
+The `META_COMMANDS` table now carries both a `cm` side and a `tt` side.
+
+**Scope boundary** (Editor-tile only, NOT in WYSIWYG):
+
+- TAB heading-fold cycle and `S-TAB` document fold
+- Org-mode table cell navigation (`TAB`/`S-TAB`/`M-RET`/`M-left/right/up/down`)
+- Keyboard macros (`C-x ( ) e`)
+- Rectangle operations (`C-x r *`)
+- Incremental / regex search (`C-s`/`C-r`/`M-C-s`/`M-C-r`)
+- Query replace (`M-%`/`M-C-%`)
+
+These remain DEFERRED per ROADMAP.md Phase 5.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

@@ -5,6 +5,13 @@ This document is a quick reference for the shortcuts most relevant to
 day-to-day development on the app. When this list and SPEC.md disagree,
 SPEC.md wins.
 
+The Emacs motion and editing bindings listed below apply in both the
+**Editor tile** (CodeMirror, via `@replit/codemirror-emacs`) and the
+**WYSIWYG editor of the Preview tile** (Tiptap, via `EmacsKeymap`).
+See SPEC.md §5.2 and `docs/SPEC_NOTES.md` §8 for the scope boundary
+(TAB folding, org-mode table nav, macros, rectangles, and incremental
+search are Editor-tile only).
+
 ---
 
 | Shortcut | Action |

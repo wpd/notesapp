@@ -82,6 +82,9 @@ and layout shortcuts), §5.1 (editor-internal Emacs bindings), and §5.5
 | Per-tile font scale in WYSIWYG tile | IMPLEMENTED | `WysiwygPane.tsx:fontScale` CSS variable |
 | Dirty / autosave / save wired to editorStore | IMPLEMENTED | `WysiwygPane.tsx:ytextObserver`; `BRIDGE_ORIGIN_PROSE` detection |
 | Mermaid click-to-navigate-source | DEFERRED | ROADMAP.md Phase 3; filed in ISSUES.md |
+| Emacs motion bindings in WYSIWYG (C-f/b/n/p, C-a/e, M-f/b, M-<, M->, C-k, C-y, C-space, C-w, M-w, C-/, C-g, M-d, M-Backspace) | IMPLEMENTED | `src/editor/emacsKeymap.ts:EmacsKeymap`; `tests/unit/wysiwygEmacsKeymap.test.ts` (15 tests); E2E: `tests/e2e/wysiwyg.emacs.e2e.ts` |
+| Esc-prefix (Esc <, Esc >) dispatches to Tiptap when Preview tile is focused | IMPLEMENTED | `src/hooks/useKeyboardShortcuts.ts:META_COMMANDS`; `tests/unit/useKeyboardShortcuts.test.ts` (WYSIWYG Esc-prefix describe block) |
+| TAB heading-fold, S-TAB, org-mode table nav, keyboard macros, rectangles, incremental search in WYSIWYG | Editor-tile only — DEFERRED | ROADMAP.md Phase 5; scope boundary documented in SPEC.md §5.2 and SPEC_NOTES.md §8 |
 
 ## §5.5 — Missing Tile
 
@@ -159,6 +162,13 @@ result here before declaring phase completion.
 39. Front-matter (`---\ntitle: ...\n---`) is not visible in the WYSIWYG editor.
 40. Mermaid code block renders as a diagram in the WYSIWYG tile.
 41. KaTeX (`$E=mc^2$`) renders as math inline in the WYSIWYG tile.
+
+**Emacs keybindings in WYSIWYG tile:**
+42. In a Preview tile, press `Esc >` — cursor jumps to end of document.
+43. Press `Esc <` — cursor jumps to beginning of document.
+44. Press `Ctrl-a` — cursor moves to start of current paragraph; `Ctrl-e` — to end.
+45. Press `Esc f` / `Esc b` — cursor moves forward/backward by one word.
+46. Type `xx`, press `Ctrl-/` — undo removes the last typed character.
 
 ---
 

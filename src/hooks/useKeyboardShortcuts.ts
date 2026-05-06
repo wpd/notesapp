@@ -12,12 +12,19 @@ import {
   deleteGroupBackward,
 } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
+import type { Editor as TiptapEditor } from "@tiptap/core";
 import { invoke } from "@tauri-apps/api/core";
 import useLayoutStore, { TileMode } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 import useProjectStore from "../stores/projectStore";
 import { getEditorView } from "../editor/editorViewRegistry";
 import { getWysiwygEditor } from "../editor/wysiwygRegistry";
+import {
+  wordForwardTiptap,
+  wordBackwardTiptap,
+  deleteWordForwardTiptap,
+  deleteWordBackwardTiptap,
+} from "../editor/emacsKeymap";
 import { noteStem, drawingFilename } from "../utils/drawingSidecar";
 
 interface ShortcutOptions {
@@ -43,15 +50,30 @@ function focusEditorDom(tileId: string): void {
 // never matches the binding key "."/"," stored by bindKey). Letter-key bindings
 // work fine through the package, but using a single direct-dispatch path for all
 // Esc-prefix keys is simpler than mixing two approaches.
+//
+// Each entry has two sides: cm for CodeMirror (Editor tiles) and tt for Tiptap
+// (Preview/WYSIWYG tiles). The dispatcher chooses based on the focused tile mode.
 type CmCommand = (view: EditorView) => boolean;
+type TtCommand = (editor: TiptapEditor) => boolean;
 
-const META_COMMANDS: Record<string, CmCommand> = {
-  "<": cursorDocStart,
-  ">": cursorDocEnd,
-  "f": cursorGroupForward,
-  "b": cursorGroupBackward,
-  "d": deleteGroupForward,
-  "Backspace": deleteGroupBackward,
+interface MetaEntry {
+  cm: CmCommand;
+  tt: TtCommand;
+}
+
+const META_COMMANDS: Record<string, MetaEntry> = {
+  "<": {
+    cm: cursorDocStart,
+    tt: (e) => { e.commands.focus("start"); return true; },
+  },
+  ">": {
+    cm: cursorDocEnd,
+    tt: (e) => { e.commands.focus("end"); return true; },
+  },
+  "f": { cm: cursorGroupForward,   tt: wordForwardTiptap },
+  "b": { cm: cursorGroupBackward,  tt: wordBackwardTiptap },
+  "d": { cm: deleteGroupForward,   tt: deleteWordForwardTiptap },
+  "Backspace": { cm: deleteGroupBackward, tt: deleteWordBackwardTiptap },
 };
 
 export function useKeyboardShortcuts({
@@ -114,12 +136,20 @@ export function useKeyboardShortcuts({
 
         e.preventDefault();
         e.stopPropagation();
-        const view = layout.focusedTileId ? getEditorView(layout.focusedTileId) : null;
-        if (view) {
-          const cmd = META_COMMANDS[e.key];
-          if (cmd) {
-            cmd(view);
-            view.focus();
+        {
+          const focused = layout.focusedTileId;
+          if (focused) {
+            const tile = layout.tiles[focused];
+            const entry = META_COMMANDS[e.key];
+            if (entry) {
+              if (tile?.mode === "preview") {
+                const ed = getWysiwygEditor(focused);
+                if (ed) entry.tt(ed);
+              } else {
+                const view = getEditorView(focused);
+                if (view) { entry.cm(view); view.focus(); }
+              }
+            }
           }
         }
         return;

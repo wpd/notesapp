@@ -315,7 +315,7 @@ The application provides a configuration item for selecting current state-of-the
 | Increase rendered font size in text and markup tiles; increase zoom in PDF tiles | `Ctrl/Cmd+=` |
 | Decrease rendered font size in text and markup tiles; decrease zoom in PDF tiles | `Ctrl/Cmd+-` |
 | Reset font size (focused tile) | `Ctrl/Cmd+0` |
-| Cursor movement matches Emacs bindings | `C-a`, `C-e` `C-b`, `C-f`, `C-p`, `C-n`, `M-<`, `M->`, etc... |
+| Cursor movement matches Emacs bindings (Editor and WYSIWYG Preview tiles) | `C-a`, `C-e`, `C-b`, `C-f`, `C-p`, `C-n`, `M-<`, `M->`, etc. — see §5.1 for the full list; applies in both Editor tiles (CodeMirror) and the WYSIWYG editor of Preview tiles (Tiptap) |
 | Emacs style Incremental and Regexp incremental search support and key bindings | `C-s`, `C-r`, `M-C-s`, `M-C-r`, `C-w` (while searching) |
 | Emacs style Query Replace and Query Replace regexp | `M-%`, `M-C-%` |
 | Move cursor to next visible Markdown header in Editor tile | `C-c` `C-n` |
@@ -324,6 +324,8 @@ The application provides a configuration item for selecting current state-of-the
 
 
 The `C-x` prefix family is intentionally consistent with Emacs window/buffer commands.  In the MacOS version, `Cmd+` shortcuts follow macOS conventions and are available even when focus is outside the editor.
+
+The Emacs movement, kill/yank, mark, and undo bindings listed in §5.1 apply uniformly in the Editor tile (CodeMirror) and the WYSIWYG editor of the Preview tile (Tiptap). The TAB-disambiguation rules defined in §5.1 (heading fold, table cell advance, code-block tab, indent) are **specific to the Editor tile** — in the WYSIWYG editor TAB has its native ProseMirror meaning (advance to next list/table position).
 
 The application provides current state-of-the art common usage top level menu bar items, for example for file open, file close, project open, project close, copy, paste, select all, search, etc...
 
@@ -501,6 +503,12 @@ Each Preview tile has its own explicit buffer binding per this section — the t
 
 **Pasting content from an AI Chat tile:**
 - AI responses are rendered markdown. The user can select any portion of an AI response (including rich formatted content — headers, lists, code blocks, tables) and paste it into a Preview tile, preserving formatting via the Tiptap layer, which round-trips it to the note's Y.Text as clean markdown source.
+
+**Emacs keybindings in the WYSIWYG editor:**
+
+The WYSIWYG editor exposes the same Emacs movement and editing bindings as the Editor tile (§5.1): `C-f/b/n/p`, `C-a/e`, `M-f/b`, `M-<`/`M->` (also `Esc <`/`Esc >`), `C-k`, `C-y`, `C-space`, `C-w`, `M-w`, `C-/`/`C-_`, `C-g`, and the Esc-as-Meta prefix for `M-d` and `M-Backspace`. These are implemented as a ProseMirror keymap extension rather than via `@replit/codemirror-emacs` (which is CodeMirror-only); they translate to ProseMirror selection and transform commands. Line motion (`C-n`/`C-p`) uses the browser's `Selection.modify` API (available in WebKit/Chrome; verified by the E2E test suite).
+
+Editor-tile-only Emacs features that do **not** apply in the WYSIWYG editor: the TAB heading-fold cycle, `S-TAB` document fold toggle, Org-mode table cell navigation (Tiptap has its own table commands), keyboard macros, rectangle operations, and incremental search. These remain Editor-tile features as specified in §5.1.
 
 **Drawing blocks:**
 

@@ -261,6 +261,11 @@ export const config: WebdriverIO.Config = {
       path.join(notesDir, "spellcheck.md"),
       "# Spellcheck Test\n\nteh quikc brown fox jumps ovver the lazy dog.\n",
     );
+    // Fixture for WYSIWYG Emacs keybinding E2E tests.
+    fs.writeFileSync(
+      path.join(notesDir, "emacs.md"),
+      "abc def\n\n# heading\n\nsecond paragraph\n",
+    );
     // Create minimal project.toml
     fs.writeFileSync(
       path.join(notesAppDir, "project.toml"),

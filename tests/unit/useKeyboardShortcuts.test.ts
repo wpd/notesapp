@@ -7,12 +7,17 @@ import { renderHook, act } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { emacs } from "@replit/codemirror-emacs";
+import type { Editor as TiptapEditor } from "@tiptap/core";
 import { useKeyboardShortcuts } from "../../src/hooks/useKeyboardShortcuts";
 import useLayoutStore from "../../src/stores/layoutStore";
 import {
   registerEditorView,
   unregisterEditorView,
 } from "../../src/editor/editorViewRegistry";
+import {
+  registerWysiwygEditor,
+  unregisterWysiwygEditor,
+} from "../../src/editor/wysiwygRegistry";
 
 // Stub @tauri-apps/api/core so invoke() resolves immediately in jsdom.
 vi.mock("@tauri-apps/api/core", () => ({
@@ -359,6 +364,106 @@ describe("useKeyboardShortcuts — Esc-as-Meta prefix (direct command dispatch)"
     expect(view.state.selection.main.head).toBe(initialHead);
 
     document.body.removeChild(dialog);
+  });
+});
+
+describe("useKeyboardShortcuts — Esc-as-Meta prefix routes to WYSIWYG editor", () => {
+  // Use a mock Tiptap editor to avoid DOM-cleanup issues with real Tiptap in jsdom.
+  // Actual cursor behaviour is verified in wysiwygEmacsKeymap.test.ts.
+  let focusMock: ReturnType<typeof vi.fn>;
+  let mockEditor: TiptapEditor;
+
+  beforeEach(() => {
+    focusMock = vi.fn();
+    // Minimal mock that satisfies the MetaEntry.tt call signatures.
+    mockEditor = {
+      commands: { focus: focusMock, undo: vi.fn() },
+      state: {
+        doc: { content: { size: 20 } },
+        selection: { head: 5 },
+      },
+      view: { state: { doc: {}, selection: { head: 5 } }, dispatch: vi.fn() },
+    } as unknown as TiptapEditor;
+
+    // Seed tiles: tile-a = editor, tile-b = preview. Focus tile-b.
+    const treeNode = {
+      direction: "row" as const,
+      first: "tile-a",
+      second: "tile-b",
+      splitPercentage: 50,
+    };
+    useLayoutStore.setState({
+      mosaicTree: treeNode,
+      tiles: {
+        "tile-a": { id: "tile-a", mode: "editor", filePath: "/notes/a.md" },
+        "tile-b": { id: "tile-b", mode: "preview", filePath: "/notes/a.md" },
+      },
+      focusedTileId: "tile-b",
+    });
+    registerWysiwygEditor("tile-b", mockEditor);
+  });
+
+  afterEach(() => {
+    unregisterWysiwygEditor("tile-b");
+  });
+
+  it("Esc > calls focus('end') on the Tiptap editor when tile is preview", () => {
+    mountHook();
+
+    act(() => {
+      fireKey("Escape");
+      fireKey(">");
+    });
+
+    expect(focusMock).toHaveBeenCalledWith("end");
+  });
+
+  it("Esc < calls focus('start') on the Tiptap editor when tile is preview", () => {
+    mountHook();
+
+    act(() => {
+      fireKey("Escape");
+      fireKey("<");
+    });
+
+    expect(focusMock).toHaveBeenCalledWith("start");
+  });
+
+  it("Esc f calls wordForwardTiptap (no throw) when tile is preview", () => {
+    mountHook();
+
+    // wordForwardTiptap calls selectionModify which is a no-op in jsdom — just
+    // verify the branch is reached without throwing.
+    expect(() => {
+      act(() => {
+        fireKey("Escape");
+        fireKey("f");
+      });
+    }).not.toThrow();
+  });
+
+  it("Esc-prefix CodeMirror path still works on editor tiles (regression)", () => {
+    // Focus the editor tile (tile-a) and register a CodeMirror view.
+    useLayoutStore.setState({ focusedTileId: "tile-a" });
+    const cmParent = document.createElement("div");
+    document.body.appendChild(cmParent);
+    const view = new EditorView({
+      state: EditorState.create({ doc: "hello\nworld", extensions: [emacs()] }),
+      parent: cmParent,
+    });
+    registerEditorView("tile-a", view);
+
+    mountHook();
+    act(() => {
+      fireKey("Escape");
+      fireKey(">");
+    });
+
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+
+    unregisterEditorView("tile-a");
+    view.destroy();
+    cmParent.remove();
   });
 });
 

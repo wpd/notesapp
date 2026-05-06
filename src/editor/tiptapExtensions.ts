@@ -15,6 +15,7 @@ import { TableCell } from "@tiptap/extension-table-cell";
 import { MathInline, MathDisplay } from "./nodes/KatexNode";
 import { MermaidBlock } from "./nodes/MermaidNode";
 import { DrawingBlock } from "./nodes/DrawingNode";
+import { EmacsKeymap } from "./emacsKeymap";
 
 /**
  * Returns the Tiptap extension array used by all WysiwygPane instances.
@@ -48,5 +49,6 @@ export function createTiptapExtensions(): Extensions {
     MathDisplay,
     MermaidBlock,
     DrawingBlock,
+    EmacsKeymap,
   ];
 }
