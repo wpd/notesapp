@@ -401,20 +401,62 @@ Tiptap + Yjs. Drawing blocks (Excalidraw) are inserted and rendered.
   implemented; AI Chat still not implemented).
 
 ### Deliverables
-- [ ] Tiptap editor bound to `Y.XmlFragment` via `y-prosemirror`
-- [ ] Yjs bridge: `Y.Text` (markdown) ↔ `Y.XmlFragment` (ProseMirror tree)
-- [ ] Tiptap formatting toolbar: bold, italic, underline, strikethrough,
+- [x] Tiptap editor bound to `Y.XmlFragment` via `y-prosemirror`
+- [x] Yjs bridge: `Y.Text` (markdown) ↔ `Y.XmlFragment` (ProseMirror tree)
+- [x] Tiptap formatting toolbar: bold, italic, underline, strikethrough,
       inline code, H1–H4, blockquote, ordered list, unordered list,
       task list, HR, link
-- [ ] Table editing (click to edit, add/remove rows and columns)
-- [ ] `drawing` fenced block renders as embedded Excalidraw canvas
-- [ ] Double-click drawing to enter edit mode; `Escape` exits
-- [ ] Insert drawing block via `C-c d` or toolbar button
-- [ ] Sidecar `.drawing` files saved alongside `.md` files
+- [x] Table editing (click to edit, add/remove rows and columns)
+- [x] `drawing` fenced block renders as embedded Excalidraw canvas
+- [x] Double-click drawing to enter edit mode; `Escape` exits
+- [x] Insert drawing block via `C-c d` or toolbar button
+- [x] Sidecar `.drawing` files saved alongside `.md` files
 - [ ] Paste from clipboard: rich content pastes into Preview preserving
-      formatting
-- [ ] All Phase 1 tests continue to pass
-- [ ] New tests for Tiptap↔Yjs sync, drawing block insert/render
+      formatting — *markdown-text path done (`WysiwygPane.tsx:95–108`);
+      HTML paste path relies on Tiptap defaults; no test coverage
+      (see Phase 2 follow-ups below)*
+- [ ] All Phase 1 tests continue to pass — *needs `npm run test`
+      confirmation*
+- [ ] New tests for Tiptap↔Yjs sync, drawing block insert/render —
+      *bridge sync covered (`tiptapBridge.forward.test.ts`,
+      `tiptapBridge.roundtrip.test.ts`); toolbar / `C-c d` /
+      `DrawingNodeView` lifecycle / paste tests still missing
+      (see Phase 2 follow-ups below)*
+
+> **Bonus work (not in original deliverables list):** Emacs motion
+> bindings in the WYSIWYG editor landed in Phase 2 — see
+> `src/editor/emacsKeymap.ts`, `tests/unit/wysiwygEmacsKeymap.test.ts`,
+> and `tests/e2e/app.e2e.ts:2299–2464`.
+
+### Phase 2 Follow-ups (must close before Phase 3 begins)
+
+These items were identified during the Phase 2 completion audit
+(2026-05-06). See `ISSUES.md` for full tracking entries.
+
+1. **Unit test for `C-c d`** — the `ccPrefixActive` state machine in
+   `src/hooks/useKeyboardShortcuts.ts:88–89,194–230` is wholly
+   uncovered: nothing asserts (a) that the chord fires only in a
+   focused Preview tile, (b) that it calls `next_drawing_number`,
+   or (c) that it inserts the `drawingBlock` node. Filed: ISSUE-010.
+2. **Unit/component test for `WysiwygToolbar`** — all 13 toolbar
+   buttons (especially Insert-Drawing, Insert-Table, link prompt) are
+   exercised only manually. Filed: ISSUE-011.
+3. **Paste unit tests** — neither `transformPastedText` (markdown text)
+   nor the default HTML paste path is asserted. Smoke items 34–35 in
+   `docs/SPEC_AUDIT.md` remain manual. Filed: ISSUE-012.
+4. **`DrawingNodeView` lifecycle tests** — sidecar load, edit-mode
+   toggle, Escape/click-outside exit, 30 s `.drawing.tmp` autosave are
+   untested at the React-component layer. Smoke items 36–37 in
+   `docs/SPEC_AUDIT.md` remain manual. Filed: ISSUE-013.
+5. **E2E for table and drawing insertion** — `tests/e2e/app.e2e.ts`
+   has Phase 2 coverage only for WYSIWYG Emacs bindings; no E2E covers
+   inserting a table or a drawing block end-to-end. Filed: ISSUE-014.
+6. **Smoke checklist sign-off** — run all 46 items in
+   `docs/SPEC_AUDIT.md` against `npm run tauri dev` and paste
+   timestamped pass/fail results before declaring Phase 2 complete.
+7. **SPEC.md cleanup** — ISSUE-008 (§5.2 drawing-fence example uses
+   wrong path form) and ISSUE-009 (`C-c d` missing from §4.1 master
+   table) are still open; fix both in a SPEC.md maintenance pass.
 
 ---
 

@@ -195,4 +195,103 @@ maintenance pass.
 
 ---
 
+## ISSUE-010 — No unit test for `C-c d` shortcut and `ccPrefixActive` state machine
+
+**Status:** Open — Phase 2 follow-up
+
+**Symptom:** The `C-c d` chord (insert drawing block in the focused Preview tile)
+is wired in `src/hooks/useKeyboardShortcuts.ts:194–224` but has no unit-test
+coverage. The `ccPrefixActive` flag and its state-machine transitions at lines
+88–89 are also uncovered.
+
+**Root cause:** Phase 2 M4 added the shortcut without a corresponding unit test.
+The smoke checklist in `docs/SPEC_AUDIT.md:159` covers this manually, but an
+automated assertion is needed.
+
+**Resolution path:** Add a test in `tests/unit/useKeyboardShortcuts.test.ts`
+asserting: (a) `C-c d` fires only when a Preview tile is focused, (b) it invokes
+`next_drawing_number` via the Tauri mock, and (c) it inserts a `drawingBlock` node
+into the Tiptap editor. Close before declaring Phase 2 complete.
+
+---
+
+## ISSUE-011 — No unit/component test for `WysiwygToolbar`
+
+**Status:** Open — Phase 2 follow-up
+
+**Symptom:** All 13 buttons in `src/components/WysiwygToolbar.tsx` (bold, italic,
+underline, strikethrough, code, H1–H4, blockquote, OL, UL, task list, HR, link,
+Insert-Table, Insert-Drawing) are exercised only by the smoke checklist. There is
+no Vitest spec at `tests/unit/WysiwygToolbar.test.tsx`.
+
+**Root cause:** Phase 2 M1 added the toolbar without a unit test; the component
+grew through M3 and M4 with no test added.
+
+**Resolution path:** Create `tests/unit/WysiwygToolbar.test.tsx`. At minimum,
+assert that each button calls the expected Tiptap command on the mocked editor,
+and that Insert-Drawing and the link-prompt dialog function correctly. Close before
+declaring Phase 2 complete.
+
+---
+
+## ISSUE-012 — No test for paste (rich content into Preview tile)
+
+**Status:** Open — Phase 2 follow-up
+
+**Symptom:** Phase 2 M5 added `transformPastedText` in `WysiwygPane.tsx:95–108`
+(markdown text → Tiptap nodes via `renderMarkdownSync`) and documented HTML paste
+as relying on Tiptap's default `clipboardParser`. Neither path is covered by a
+unit or E2E test. Smoke-checklist items 34 and 35 in `docs/SPEC_AUDIT.md` remain
+manual.
+
+**Root cause:** M5 was declared complete without writing automated tests for the
+paste paths.
+
+**Resolution path:** Add Vitest tests for `transformPastedText` (mock clipboard
+with markdown text, assert resulting Tiptap node structure), and a brief E2E test
+that pastes markdown into the Preview tile and asserts rendered output. Close
+before declaring Phase 2 complete.
+
+---
+
+## ISSUE-013 — No unit/component test for `DrawingNodeView` lifecycle
+
+**Status:** Open — Phase 2 follow-up
+
+**Symptom:** `src/editor/nodes/DrawingNode.tsx` implements: sidecar load via
+`read_drawing`, edit-mode toggle on double-click, Escape/click-outside exit from
+edit mode, and 30 s autosave to `.drawing.tmp`. None of these lifecycle behaviours
+are covered by a Vitest spec. Smoke-checklist items 36 and 37 in
+`docs/SPEC_AUDIT.md` are manual.
+
+**Root cause:** Phase 2 M4 focused on wiring and E2E-observable behaviour;
+component-level unit tests for the `DrawingNode` view were not added.
+
+**Resolution path:** Create `tests/unit/DrawingNode.test.tsx`. Mock the Tauri
+`read_drawing` / `write_drawing` / `autosave_drawing` commands. Assert: initial
+render calls `read_drawing`; double-click enters edit mode; Escape exits; click
+outside exits; 30 s timer calls `autosave_drawing`. Close before declaring Phase 2
+complete.
+
+---
+
+## ISSUE-014 — No E2E coverage for table insertion or drawing insertion
+
+**Status:** Open — Phase 2 follow-up
+
+**Symptom:** `tests/e2e/app.e2e.ts` contains a Phase 2 E2E suite (lines 2299–2464)
+covering only WYSIWYG Emacs keybindings. No E2E test exercises inserting a table
+(toolbar Insert-Table → click into a cell → type) or inserting a drawing block
+(`C-c d` → double-click → Escape) end-to-end in the running Tauri app.
+
+**Root cause:** Phase 2 E2E work prioritised the Emacs-keybinding suite; table and
+drawing E2E were not added.
+
+**Resolution path:** Add E2E describes to `tests/e2e/app.e2e.ts` covering: (a)
+click Insert-Table → verify table node present in Preview tile; (b) `C-c d` →
+verify drawing fence block appears in Editor tile. Close before declaring Phase 2
+complete.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*
