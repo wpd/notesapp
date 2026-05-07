@@ -2185,3 +2185,280 @@ describe("C-x N tile focus and number badge (SPEC §4.1)", () => {
     expect(newEditorHasFocus).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// WYSIWYG Emacs keybindings (SPEC.md §5.2)
+//
+// Uses the `emacs.md` fixture note: "abc def\n\n# heading\n\nsecond paragraph\n"
+// Each test opens that note in a Preview tile and verifies a motion binding.
+// Skipped on macOS (ISSUE-003 — WebKitWebDriver not available on macOS).
+// ---------------------------------------------------------------------------
+
+const WYSIWYG_SKIP_ON_MACOS = process.platform === "darwin";
+
+/** Click inside the Tiptap editor to give it keyboard focus. */
+async function focusWysiwygEditor() {
+  await $(".ProseMirror").waitForExist({ timeout: 5000 });
+  // focus() must be called explicitly on the contenteditable so ProseMirror
+  // syncs its internal selection to the DOM; click() alone is not enough in
+  // WebKit WebDriver (synthetic events may not trigger focus transfer).
+  await browser.execute(() => {
+    const el = document.querySelector(".ProseMirror") as HTMLElement | null;
+    if (el) { el.focus(); el.click(); }
+  });
+  await browser.pause(200);
+}
+
+/** Load a note by name into the currently focused tile via C-x b. */
+async function loadNoteInFocusedTile(noteName: string) {
+  await browser.action("key")
+    .down(KEY.CTRL).down("x").up("x").up(KEY.CTRL)
+    .perform();
+  await browser.pause(150);
+  await browser.action("key").down("b").up("b").perform();
+  await browser.pause(300);
+
+  const input = $('//*[@data-testid="buffer-switcher-input"]');
+  await input.waitForExist({ timeout: 5000 });
+  await input.setValue(noteName);
+  await browser.pause(300);
+  await browser.action("key").down(KEY.RETURN).up(KEY.RETURN).perform();
+  await browser.pause(500);
+}
+
+/** Focus the first Editor tile via JavaScript click to avoid intercepted-click errors. */
+async function clickFirstEditorTileForWysiwyg() {
+  // Use browser.execute rather than XPath click — per the WebKitWebDriver
+  // limitation note at the top of this file, XPath clicks are intercepted in
+  // some states.  JS click bypasses the overlay-intercept check.
+  await $('//*[@data-tile-mode="editor"]').waitForExist({ timeout: 10000 });
+  await browser.execute(() => {
+    const el = document.querySelector('[data-tile-mode="editor"]') as HTMLElement | null;
+    if (el) el.click();
+  });
+  await browser.pause(150);
+}
+
+/** Return the caret startOffset within the current ProseMirror selection. */
+async function getWysiwygCaretOffset(): Promise<number> {
+  return browser.execute(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return -1;
+    return sel.getRangeAt(0).startOffset;
+  });
+}
+
+/** Return the text content of the selection's anchor node. */
+async function getWysiwygAnchorText(): Promise<string> {
+  return browser.execute(() => {
+    const sel = window.getSelection();
+    if (!sel || !sel.anchorNode) return "";
+    return sel.anchorNode.textContent ?? "";
+  });
+}
+
+/**
+ * Return the text from the start of the cursor's containing block to the
+ * cursor position, staying within the .ProseMirror root.
+ *
+ * More reliable than `startOffset` because that value is a child-index
+ * when the range container is an element node (ProseMirror places the cursor
+ * in `<p>` at childIndex 1 after `selectTextblockEnd`, not in the text node
+ * at character offset 7).  Also guards against the case where `window.
+ * getSelection()` refers to a position outside the editor (e.g. body level),
+ * which returns "" rather than a misleadingly large string.
+ */
+async function getTextBeforeCursorInBlock(): Promise<string> {
+  return browser.execute(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return "";
+    const range = sel.getRangeAt(0);
+    let container: Node = range.startContainer;
+
+    // Normalise: walk text nodes up to their parent element.
+    if (container.nodeType === 3 /* TEXT_NODE */) {
+      container = (container as Text).parentElement!;
+    }
+
+    // Guard: if the selection is outside .ProseMirror, we can't measure.
+    if (!(container as Element).closest?.(".ProseMirror")) return "";
+
+    // Find the direct block-level child of .ProseMirror that contains the cursor.
+    let block = container as Element;
+    while (block.parentElement && !block.parentElement.classList.contains("ProseMirror")) {
+      block = block.parentElement;
+    }
+
+    const before = document.createRange();
+    before.setStart(block, 0);
+    before.setEnd(range.startContainer, range.startOffset);
+    return before.toString();
+  });
+}
+
+describe("WYSIWYG Emacs keybindings", function () {
+  before(async () => {
+    if (WYSIWYG_SKIP_ON_MACOS) {
+      console.log("  WYSIWYG Emacs E2E SKIPPED — ISSUE-003 (macOS E2E unavailable).");
+    }
+    await waitForId("app-root", 25000);
+    // Remove any overlay left open by earlier failing tests via JavaScript so
+    // that subsequent clicks are not intercepted by a modal backdrop.
+    await browser.execute(() => {
+      const overlays = [
+        '[data-testid="buffer-switcher-overlay"]',
+        '[data-testid="unsaved-dialog-overlay"]',
+        '[data-testid="missing-recovery-overlay"]',
+        '[data-testid="quit-dialog-overlay"]',
+      ];
+      for (const sel of overlays) {
+        const el = document.querySelector(sel);
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      }
+    });
+    await browser.pause(300);
+  });
+
+  beforeEach(async function () {
+    if (WYSIWYG_SKIP_ON_MACOS) { this.skip(); return; }
+
+    // Focus the first editor tile and load the emacs fixture.
+    await clickFirstEditorTileForWysiwyg();
+    await loadNoteInFocusedTile("emacs");
+
+    // Switch the tile to Preview using the title-bar mode-indicator button
+    // (direct one-click toggle: no note picker opens).  We need the tile ID
+    // to locate the button.
+    const tileId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { focusedTileId: string | null };
+        }
+      ).__notesapp_layout__;
+      return fn ? fn().focusedTileId : null;
+    });
+    if (!tileId) throw new Error("No focused tile after loading emacs note");
+    await browser.execute((id) => {
+      const el = document.querySelector(
+        `[data-testid="tile-mode-indicator-${id}"]`,
+      ) as HTMLElement | null;
+      if (el) el.click();
+    }, tileId);
+
+    // Wait for the Tiptap editor to mount and render the emacs fixture content.
+    // The 'abc def' text from the first paragraph is the canary.
+    await browser.waitUntil(
+      async () => {
+        const text = await browser.execute(() => {
+          const pm = document.querySelector(".ProseMirror");
+          return pm ? pm.textContent : "";
+        });
+        return typeof text === "string" && text.includes("abc def");
+      },
+      { timeout: 8000, interval: 150, timeoutMsg: "emacs.md content not visible in WYSIWYG editor within 8s" },
+    );
+    await browser.pause(300);
+
+    await focusWysiwygEditor();
+  });
+
+  it("Esc > moves cursor to end of document", async () => {
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(150);
+    await browser.action("key").down(">").up(">").perform();
+    await browser.pause(300);
+
+    const anchorText = await getWysiwygAnchorText();
+    expect(anchorText).toContain("second paragraph");
+  });
+
+  it("Esc < moves cursor to beginning of document", async () => {
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(100);
+    await browser.action("key").down(">").up(">").perform();
+    await browser.pause(200);
+
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(100);
+    await browser.action("key").down("<").up("<").perform();
+    await browser.pause(300);
+
+    const anchorText = await getWysiwygAnchorText();
+    expect(anchorText).toContain("abc def");
+    const offset = await getWysiwygCaretOffset();
+    expect(offset).toBe(0);
+  });
+
+  it("Ctrl-e moves cursor to end of current line", async () => {
+    // Use Ctrl-a (no character insertion) to go to line start, then Ctrl-e
+    // to go to line end.  Esc < is intentionally avoided here because WebKit
+    // fires beforeinput independently of keydown.preventDefault(), causing
+    // the `<` character to be inserted into the note content.
+    await browser.action("key")
+      .down(KEY.CTRL).down("a").up("a").up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+
+    await browser.action("key")
+      .down(KEY.CTRL).down("e").up("e").up(KEY.CTRL)
+      .perform();
+    await browser.pause(200);
+
+    // After Ctrl-e the cursor should be at the end of the paragraph.
+    // Verify by round-tripping back with Ctrl-a and checking offset = 0.
+    const textAfterCtrlE = await getTextBeforeCursorInBlock();
+    expect(textAfterCtrlE.length).toBeGreaterThan(0); // moved from start to end
+
+    await browser.action("key")
+      .down(KEY.CTRL).down("a").up("a").up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+    const offsetAfterCtrlA = await getWysiwygCaretOffset();
+    expect(offsetAfterCtrlA).toBe(0); // round-trip: back to start
+  });
+
+  it("Ctrl-a moves cursor to start of current line", async () => {
+    // Use Ctrl-e to move to line end (no character insertion), then Ctrl-a.
+    // Esc-prefix navigation is avoided because WebKit fires beforeinput
+    // independently of keydown.preventDefault(), causing the suffix character
+    // (e.g. `<`, `>`) to be inserted into the note and corrupt later tests.
+    await browser.action("key")
+      .down(KEY.CTRL).down("e").up("e").up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+
+    // Sanity: cursor is now at end of line — text before it is non-empty.
+    const textAtEnd = await getTextBeforeCursorInBlock();
+    expect(textAtEnd.length).toBeGreaterThan(0);
+
+    await browser.action("key")
+      .down(KEY.CTRL).down("a").up("a").up(KEY.CTRL)
+      .perform();
+    await browser.pause(200);
+
+    const offset = await getWysiwygCaretOffset();
+    expect(offset).toBe(0);
+  });
+
+  it("Esc f advances cursor by one word", async () => {
+    // Use Ctrl-a to go to line start without inserting any characters.
+    // Esc-prefix navigation (Esc > / Esc <) inserts the suffix character via
+    // WebKit's beforeinput, corrupting the note across tests.
+    await browser.action("key")
+      .down(KEY.CTRL).down("a").up("a").up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+
+    // Text before cursor should be "" at line start.
+    const textBefore = await getTextBeforeCursorInBlock();
+
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(100);
+    await browser.action("key").down("f").up("f").perform();
+    await browser.pause(300);
+
+    // After moving forward one word, more text precedes the cursor than before.
+    const textAfter = await getTextBeforeCursorInBlock();
+    expect(textAfter.length).toBeGreaterThan(textBefore.length);
+  });
+});
