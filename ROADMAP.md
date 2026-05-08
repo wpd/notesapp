@@ -411,17 +411,16 @@ Tiptap + Yjs. Drawing blocks (Excalidraw) are inserted and rendered.
 - [x] Double-click drawing to enter edit mode; `Escape` exits
 - [x] Insert drawing block via `C-c d` or toolbar button
 - [x] Sidecar `.drawing` files saved alongside `.md` files
-- [ ] Paste from clipboard: rich content pastes into Preview preserving
-      formatting — *markdown-text path done (`WysiwygPane.tsx:95–108`);
-      HTML paste path relies on Tiptap defaults; no test coverage
-      (see Phase 2 follow-ups below)*
-- [ ] All Phase 1 tests continue to pass — *needs `npm run test`
-      confirmation*
-- [ ] New tests for Tiptap↔Yjs sync, drawing block insert/render —
-      *bridge sync covered (`tiptapBridge.forward.test.ts`,
-      `tiptapBridge.roundtrip.test.ts`); toolbar / `C-c d` /
-      `DrawingNodeView` lifecycle / paste tests still missing
-      (see Phase 2 follow-ups below)*
+- [x] Paste from clipboard: rich content pastes into Preview preserving
+      formatting — markdown-text path (`WysiwygPane.tsx:95–108`) + HTML via
+      Tiptap defaults; tests in `tests/unit/pasteTransform.test.ts` (ISSUE-012)
+- [x] All Phase 1 tests continue to pass — confirmed 377/377 unit,
+      59/59 Rust, 65/65 E2E (2026-05-07 smoke run; see SPEC_AUDIT.md)
+- [x] New tests for Tiptap↔Yjs sync, drawing block insert/render —
+      `tiptapBridge.forward.test.ts`, `tiptapBridge.roundtrip.test.ts`,
+      `WysiwygToolbar.test.tsx` (ISSUE-011), `DrawingNode.test.tsx` (ISSUE-013),
+      `useKeyboardShortcuts.test.ts` C-c d block (ISSUE-010),
+      E2E table + drawing suites (ISSUE-014)
 
 > **Bonus work (not in original deliverables list):** Emacs motion
 > bindings in the WYSIWYG editor landed in Phase 2 — see

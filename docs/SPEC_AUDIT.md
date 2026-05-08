@@ -240,4 +240,19 @@ layer and the macOS acceptance tests cited in the Notes column below.
 
 ---
 
+## Phase 2 Close-out Re-confirmation — 2026-05-08 (Linux x86\_64)
+
+**Operator:** Claude Code (automated)
+**Build:** release binary rebuilt via `npm run test:e2e`
+**Unit tests:** `npm run test:unit` — 377/377 pass
+**Rust tests:** `cargo test` — 59/59 pass
+**E2E run:** `npm run test:e2e` — 65 passing, 0 failing; multi-launch 12/12
+**Result:** PASS — Phase 2 fully closed out; Phase 3 may begin
+
+ROADMAP.md Phase 2 deliverables updated: all three previously-unchecked `[ ]`
+items (paste clipboard, Phase 1 test confirmation, new tests) marked `[x]` —
+all were already resolved by the Phase 2 follow-ups (ISSUE-010 through ISSUE-014).
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*
