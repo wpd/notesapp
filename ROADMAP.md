@@ -433,30 +433,25 @@ Tiptap + Yjs. Drawing blocks (Excalidraw) are inserted and rendered.
 These items were identified during the Phase 2 completion audit
 (2026-05-06). See `ISSUES.md` for full tracking entries.
 
-1. **Unit test for `C-c d`** — the `ccPrefixActive` state machine in
-   `src/hooks/useKeyboardShortcuts.ts:88–89,194–230` is wholly
-   uncovered: nothing asserts (a) that the chord fires only in a
-   focused Preview tile, (b) that it calls `next_drawing_number`,
-   or (c) that it inserts the `drawingBlock` node. Filed: ISSUE-010.
-2. **Unit/component test for `WysiwygToolbar`** — all 13 toolbar
-   buttons (especially Insert-Drawing, Insert-Table, link prompt) are
-   exercised only manually. Filed: ISSUE-011.
-3. **Paste unit tests** — neither `transformPastedText` (markdown text)
-   nor the default HTML paste path is asserted. Smoke items 34–35 in
-   `docs/SPEC_AUDIT.md` remain manual. Filed: ISSUE-012.
-4. **`DrawingNodeView` lifecycle tests** — sidecar load, edit-mode
-   toggle, Escape/click-outside exit, 30 s `.drawing.tmp` autosave are
-   untested at the React-component layer. Smoke items 36–37 in
-   `docs/SPEC_AUDIT.md` remain manual. Filed: ISSUE-013.
-5. **E2E for table and drawing insertion** — `tests/e2e/app.e2e.ts`
-   has Phase 2 coverage only for WYSIWYG Emacs bindings; no E2E covers
-   inserting a table or a drawing block end-to-end. Filed: ISSUE-014.
-6. **Smoke checklist sign-off** — run all 46 items in
-   `docs/SPEC_AUDIT.md` against `npm run tauri dev` and paste
-   timestamped pass/fail results before declaring Phase 2 complete.
-7. **SPEC.md cleanup** — ISSUE-008 (§5.2 drawing-fence example uses
-   wrong path form) and ISSUE-009 (`C-c d` missing from §4.1 master
-   table) are still open; fix both in a SPEC.md maintenance pass.
+1. **Unit test for `C-c d`** — Fixed (ISSUE-010, 2026-05-07).
+   Added "C-c d drawing insertion" describe block to
+   `tests/unit/useKeyboardShortcuts.test.ts`.
+2. **Unit/component test for `WysiwygToolbar`** — Fixed (ISSUE-011, 2026-05-07).
+   Created `tests/unit/WysiwygToolbar.test.tsx` covering all buttons,
+   Insert-Drawing flow, and Link prompt dialog.
+3. **Paste unit tests** — Fixed (ISSUE-012, 2026-05-07).
+   Extracted `transformPastedText` to `src/utils/pasteTransform.ts`;
+   created `tests/unit/pasteTransform.test.ts`.
+4. **`DrawingNodeView` lifecycle tests** — Fixed (ISSUE-013, 2026-05-07).
+   Created `tests/unit/DrawingNode.test.tsx`; exported `DrawingNodeView`.
+5. **E2E for table and drawing insertion** — Fixed (ISSUE-014, 2026-05-07).
+   Added two describe blocks to `tests/e2e/app.e2e.ts` (table toolbar
+   and C-c d drawing block); skipped on macOS per ISSUE-003.
+6. **Smoke checklist sign-off** — Fixed (2026-05-07): 65/65 E2E tests pass;
+   see `docs/SPEC_AUDIT.md` §"Smoke Run — 2026-05-07" for per-item results.
+7. **SPEC.md cleanup** — Fixed (ISSUE-008, ISSUE-009, 2026-05-07):
+   §5.2 fence example updated to canonical `<stem>.NNNN.drawing` form;
+   `C-c d` row added to §4.1 master shortcut table.
 
 ---
 

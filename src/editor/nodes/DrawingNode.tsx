@@ -50,7 +50,7 @@ const EMPTY_DRAWING: ExcalidrawData = {
   files: {},
 };
 
-function DrawingNodeView({ node, editor }: NodeViewProps) {
+export function DrawingNodeView({ node, editor }: NodeViewProps) {
   const filename = node.attrs.filename as string;
   const noteDir: string = (editor.storage as unknown as Record<string, Record<string, string>>).drawingBlock?.noteDirectory ?? "";
   const sidecarPath = noteDir && filename ? `${noteDir}/${filename}` : "";

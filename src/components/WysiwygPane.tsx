@@ -19,7 +19,8 @@ import useEditorStore from "../stores/editorStore";
 import useLayoutStore from "../stores/layoutStore";
 import { createTiptapExtensions } from "../editor/tiptapExtensions";
 import { createTiptapBridge } from "../editor/tiptapBridge";
-import { splitFrontmatter, renderMarkdownSync } from "../utils/markdownPipeline";
+import { splitFrontmatter } from "../utils/markdownPipeline";
+import { transformPastedText } from "../utils/pasteTransform";
 import { markdownToProseMirror } from "../editor/markdownToProseMirror";
 import { registerWysiwygEditor, unregisterWysiwygEditor } from "../editor/wysiwygRegistry";
 import WysiwygToolbar from "./WysiwygToolbar";
@@ -92,20 +93,7 @@ export default function WysiwygPane({
       editorProps: {
         // Convert plain-text pastes that look like markdown to HTML so that
         // formatting (bold, italic, lists, tables) is preserved (SPEC.md §5.2).
-        transformPastedText(text) {
-          const looksLikeMarkdown =
-            /^#{1,6} |^\*\*|^__|^\*[^*]|^_[^_]|^- |^\d+\. |^> |^```|^\$/.test(
-              text.trim(),
-            );
-          if (looksLikeMarkdown) {
-            try {
-              return renderMarkdownSync(text);
-            } catch {
-              return text;
-            }
-          }
-          return text;
-        },
+        transformPastedText,
       },
     },
     [filePath],

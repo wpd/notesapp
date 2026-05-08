@@ -94,6 +94,42 @@ async function clickFirstTileOfType(tileMode: string) {
 }
 
 /**
+ * Focus the first tile of the given mode via the Zustand store's focusTile.
+ *
+ * Native XPath clicks can fail to fire the React onClick handler (focusTile)
+ * inside WebKitWebDriver's stale JS execute context.  Using the store API
+ * directly ensures focusedTileId is updated before keyboard shortcuts are sent.
+ * Returns the focused tile ID, or null if no matching tile exists.
+ */
+async function focusFirstTileOfTypeViaStore(tileMode: string): Promise<string | null> {
+  await $(`//*[@data-tile-mode="${tileMode}"]`).waitForExist({ timeout: 5000 });
+  const tileId = await browser.execute((mode: string) => {
+    const fn = (
+      window as Window & {
+        __notesapp_layout__?: () => {
+          tiles: Record<string, { mode: string }>;
+          focusTile: (id: string) => void;
+        };
+      }
+    ).__notesapp_layout__;
+    if (!fn) return null;
+    const { tiles, focusTile } = fn();
+    const id = Object.keys(tiles).find((k) => tiles[k].mode === mode) ?? null;
+    if (id) focusTile(id);
+    return id;
+  }, tileMode);
+  // Also give DOM focus via XPath click so WebKitWebDriver delivers key
+  // events to the document capture-phase listener correctly.
+  if (tileId) {
+    const el = $(`//*[@data-testid="tile-${tileId}"]`);
+    await el.waitForExist({ timeout: 3000 });
+    await el.click();
+  }
+  await browser.pause(100);
+  return tileId as string | null;
+}
+
+/**
  * Click the Nth element (0-indexed) with data-tile-mode="editor".
  */
 async function clickEditorAtIndex(index: number) {
@@ -144,7 +180,14 @@ async function waitForPreviewContent(timeout = 5000) {
   return el;
 }
 
-/** Send C-x prefix chord, then a key. */
+/**
+ * Send C-x prefix chord, then a key.
+ *
+ * Note: do NOT blur before sending — WebKitWebDriver delivers browser.action
+ * key events to the document (capture phase listener in useKeyboardShortcuts
+ * receives them regardless of which element has DOM focus).  Blurring removes
+ * DOM focus, which in some WebKit configurations prevents key delivery entirely.
+ */
 async function sendCxChord(key: string) {
   await browser.action('key')
     .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL)
@@ -152,6 +195,37 @@ async function sendCxChord(key: string) {
   await browser.pause(150);
   await browser.action('key').down(key).up(key).perform();
   await browser.pause(200);
+}
+
+/**
+ * Dismiss any open modal overlay (buffer switcher, unsaved-changes dialog,
+ * quit dialog) using React-safe key/button events instead of direct DOM
+ * manipulation.  Direct removeChild bypasses React's reconciler and can
+ * leave the fiber tree in an inconsistent state that breaks subsequent
+ * overlay renders.
+ *
+ * IMPORTANT: use XPath isExisting() for existence checks — browser.execute()
+ * runs in a stale JS context (WebKitWebDriver --target mode) that cannot see
+ * React-rendered DOM changes, so querySelector always returns null for dynamic
+ * overlays.  XPath uses the live WebDriver DOM protocol.
+ */
+async function dismissOpenOverlays() {
+  if (await $('//*[@data-testid="buffer-switcher"]').isExisting()) {
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(300);
+  }
+  if (await $('//*[@data-testid="unsaved-dialog"]').isExisting()) {
+    try {
+      await $('//*[@data-testid="unsaved-dialog-cancel"]').click();
+    } catch { /* ignore — dialog may have auto-closed */ }
+    await browser.pause(300);
+  }
+  if (await $('//*[@data-testid="quit-dialog"]').isExisting()) {
+    try {
+      await $('//*[@data-testid="quit-dialog-cancel"]').click();
+    } catch { /* ignore */ }
+    await browser.pause(300);
+  }
 }
 
 /** Send Ctrl+Shift+key */
@@ -370,12 +444,11 @@ describe("Pane splitting (C-x h / C-x v)", () => {
   it("C-x h splits the focused pane horizontally, adding a tile", async () => {
     const countBefore = await getTileCount();
 
-    // Click editor tile to focus it
-    await clickFirstTileOfType("editor");
-    await browser.pause(200);
+    // Use store-based focus + DOM click to guarantee focusedTileId is set.
+    await focusFirstTileOfTypeViaStore("editor");
 
     await sendCxChord('h');
-    await browser.pause(500);
+    await browser.pause(1000);
 
     const countAfter = await getTileCount();
     expect(countAfter).toBe(countBefore + 1);
@@ -1164,14 +1237,8 @@ describe("External deletion transitions bound tile to Missing", () => {
 
 describe("Editor↔Preview title-bar toggle", () => {
   before(async () => {
-    // Dismiss any leftover buffer-switcher overlay before continuing — failed
-    // tests in earlier blocks may have left one open which blocks clicks.
-    await browser.execute(() => {
-      const overlay = document.querySelector(
-        '[data-testid="buffer-switcher-overlay"]',
-      );
-      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    });
+    // Dismiss any leftover overlay before continuing.
+    await dismissOpenOverlays();
     // Close every Missing tile the deletion suite produced so we are back to
     // a clean editor + preview baseline.
     let missingTileIds = await browser.execute(() => {
@@ -1266,13 +1333,20 @@ describe("Preview picker filters non-.md files", () => {
       path.join(projectDir, "notes", txtName),
       "Plain text — should appear in editor picker but not preview picker.\n",
     );
-    await browser.pause(300);
+    // Wait for the file-watcher debounce (500ms) before opening any picker.
+    await browser.pause(700);
   });
 
   it("the editor picker lists the plain .txt file", async () => {
-    await clickFirstTileOfType("editor");
-    await browser.pause(200);
-    await sendCxChord("b");
+    // Ensure an editor tile exists — "Editor↔Preview title-bar toggle" may have
+    // converted all editor tiles to preview.
+    await ensureEditorTileExists();
+    // Open the buffer switcher via the tile's dropdown button — more reliable
+    // than the C-x b keyboard shortcut in this part of the test suite where
+    // focusedTileId may not survive state changes from prior describe blocks.
+    const tileId = await focusFirstTileOfTypeViaStore("editor");
+    expect(tileId).toBeTruthy();
+    await clickById(`tile-buffer-dropdown-${tileId}`);
     const switcher = await waitForId("buffer-switcher", 3000);
     await expect(switcher).toBeDisplayed();
 
@@ -1291,9 +1365,9 @@ describe("Preview picker filters non-.md files", () => {
   });
 
   it("the preview picker omits the plain .txt file", async () => {
-    await clickFirstTileOfType("preview");
-    await browser.pause(200);
-    await sendCxChord("b");
+    const tileId = await focusFirstTileOfTypeViaStore("preview");
+    expect(tileId).toBeTruthy();
+    await clickById(`tile-buffer-dropdown-${tileId}`);
     const switcher = await waitForId("buffer-switcher", 3000);
     await expect(switcher).toBeDisplayed();
 
@@ -1321,6 +1395,8 @@ describe("Preview picker filters non-.md files", () => {
 
 describe("Editor↔Preview toggle disabled on non-.md files", () => {
   it("the mode indicator is non-interactive (cursor:default) when bound to a .txt buffer", async () => {
+    // Ensure an editor tile exists before looking for one.
+    await ensureEditorTileExists();
     // Bind any editor tile to the .txt note created by the Preview-filter suite.
     // Build the exact filename via store introspection (the txt was list_notes_all'd
     // already, so we just look it up in the project's notes/ directory listing).
@@ -1340,7 +1416,7 @@ describe("Editor↔Preview toggle disabled on non-.md files", () => {
     });
     expect(editorTileId).toMatch(/^editor-/);
 
-    // Focus that tile, open the picker, type "plain_" and Enter to bind to .txt.
+    // Focus that tile and open the picker via the buffer-dropdown button.
     await browser.execute((id) => {
       const fn = (
         window as Window & {
@@ -1350,7 +1426,7 @@ describe("Editor↔Preview toggle disabled on non-.md files", () => {
       if (fn && id) fn().focusTile(id);
     }, editorTileId);
     await browser.pause(200);
-    await sendCxChord("b");
+    await clickById(`tile-buffer-dropdown-${editorTileId}`);
     await waitForId("buffer-switcher", 3000);
     const input = await byId("buffer-switcher-input");
     await input.clearValue();
@@ -1464,29 +1540,20 @@ describe("C-x 0 last-tile-of-dirty-buffer dialog", () => {
   before(async () => {
     if (!projectDir) throw new Error("NOTESAPP_E2E_PROJECT_DIR not set");
     // Dismiss any leftover overlay from earlier blocks.
-    await browser.execute(() => {
-      const overlays = [
-        '[data-testid="buffer-switcher-overlay"]',
-        '[data-testid="unsaved-dialog-overlay"]',
-        '[data-testid="missing-recovery-overlay"]',
-        '[data-testid="quit-dialog-overlay"]',
-      ];
-      for (const sel of overlays) {
-        const el = document.querySelector(sel);
-        if (el && el.parentNode) el.parentNode.removeChild(el);
-      }
-    });
+    await dismissOpenOverlays();
 
     fs.writeFileSync(
       path.join(projectDir, "notes", dialogFile),
       "# Dialog target\n\nbody\n",
     );
-    await browser.pause(300);
+    // Wait for the file-watcher debounce (500ms) to add the new file to the
+    // project store before opening the buffer switcher.
+    await browser.pause(700);
 
-    // Bind an editor tile to this file, type into it to make it dirty.
-    await clickFirstTileOfType("editor");
-    await browser.pause(200);
-    await sendCxChord("b");
+    // Bind an editor tile to this file via the tile's buffer-dropdown button.
+    const dialogTileId = await focusFirstTileOfTypeViaStore("editor");
+    expect(dialogTileId).toBeTruthy();
+    await clickById(`tile-buffer-dropdown-${dialogTileId}`);
     await waitForId("buffer-switcher", 3000);
     const input = await byId("buffer-switcher-input");
     await input.clearValue();
@@ -1495,7 +1562,22 @@ describe("C-x 0 last-tile-of-dirty-buffer dialog", () => {
     await browser.action("key").down(KEY.RETURN).up(KEY.RETURN).perform();
     await browser.pause(700);
 
-    const cmContent = await $(".cm-content");
+    // Focus the specific tile before clicking its cm-content.
+    // $(".cm-content") would grab the first cm-content in DOM order (may be
+    // a different tile); use the tile-specific selector instead.
+    await browser.execute((id) => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { focusTile: (id: string) => void };
+        }
+      ).__notesapp_layout__;
+      if (fn && id) fn().focusTile(id as string);
+    }, dialogTileId);
+    await browser.pause(200);
+    const cmContent = await $(
+      `[data-testid="codemirror-editor-${dialogTileId}"] .cm-content`,
+    );
+    await cmContent.waitForDisplayed({ timeout: 3000 });
     await cmContent.click();
     await browser.pause(200);
     // Append a single character to mark dirty.
@@ -1831,11 +1913,7 @@ describe("Drag from Explorer onto tile rebinds", () => {
 
 describe("Mermaid diagram rendering in Preview", () => {
   before(async () => {
-    // Dismiss any leftover overlay before the suite runs.
-    await browser.execute(() => {
-      const overlay = document.querySelector('[data-testid="buffer-switcher-overlay"]');
-      if (overlay?.parentNode) overlay.parentNode.removeChild(overlay);
-    });
+    await dismissOpenOverlays();
   });
 
   it("renders a fenced mermaid block as an SVG diagram (no .mermaid-error)", async () => {
@@ -2226,17 +2304,111 @@ async function loadNoteInFocusedTile(noteName: string) {
   await browser.pause(500);
 }
 
-/** Focus the first Editor tile via JavaScript click to avoid intercepted-click errors. */
+/**
+ * Focus the first Editor tile via the Zustand store's focusTile action.
+ *
+ * WebKitWebDriver runs browser.execute() in a stale JS context — el.click()
+ * from that context may not fire the React onClick handler, leaving
+ * focusedTileId unset in the store.  Using the store API directly is
+ * reliable across test boundaries.
+ */
 async function clickFirstEditorTileForWysiwyg() {
-  // Use browser.execute rather than XPath click — per the WebKitWebDriver
-  // limitation note at the top of this file, XPath clicks are intercepted in
-  // some states.  JS click bypasses the overlay-intercept check.
-  await $('//*[@data-tile-mode="editor"]').waitForExist({ timeout: 10000 });
-  await browser.execute(() => {
-    const el = document.querySelector('[data-tile-mode="editor"]') as HTMLElement | null;
-    if (el) el.click();
+  // If no editor tiles exist (prior WYSIWYG suites convert editors to preview),
+  // toggle the first preview tile back to editor via its mode-indicator button.
+  const hasEditor = await browser.execute(() => {
+    const fn = (
+      window as Window & {
+        __notesapp_layout__?: () => { tiles: Record<string, { mode: string }> };
+      }
+    ).__notesapp_layout__;
+    return fn
+      ? Object.values(fn().tiles).some((t) => (t as { mode: string }).mode === "editor")
+      : false;
   });
+  if (!hasEditor) {
+    const previewId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { tiles: Record<string, { mode: string }> };
+        }
+      ).__notesapp_layout__;
+      if (!fn) return null;
+      const { tiles } = fn();
+      return Object.keys(tiles).find((k) => tiles[k].mode === "preview") ?? null;
+    });
+    if (previewId) {
+      // Click the mode indicator to toggle preview → editor.
+      await clickById(`tile-mode-indicator-${previewId}`);
+      await browser.pause(500);
+    }
+  }
+
+  await $('//*[@data-tile-mode="editor"]').waitForExist({ timeout: 10000 });
+  const tileId = await browser.execute(() => {
+    const fn = (
+      window as Window & {
+        __notesapp_layout__?: () => {
+          tiles: Record<string, { mode: string }>;
+          focusTile: (id: string) => void;
+        };
+      }
+    ).__notesapp_layout__;
+    if (!fn) return null;
+    const { tiles, focusTile } = fn();
+    const id = Object.keys(tiles).find((k) => tiles[k].mode === "editor") ?? null;
+    if (id) focusTile(id);
+    return id;
+  });
+  // Also give DOM focus via XPath click so WebKitWebDriver key delivery works.
+  if (tileId) {
+    const el = $(`//*[@data-testid="tile-${tileId}"]`);
+    await el.waitForExist({ timeout: 3000 });
+    await el.click();
+  }
   await browser.pause(150);
+}
+
+/**
+ * Ensure at least one editor tile exists in the layout.
+ *
+ * Prior test suites (e.g. "Editor↔Preview title-bar toggle") may convert all
+ * editor tiles to preview mode.  Tests that need an editor tile call this
+ * helper first so they do not fail with a "tile not found" timeout.
+ */
+async function ensureEditorTileExists(): Promise<void> {
+  const hasEditor = await browser.execute(() => {
+    const fn = (
+      window as Window & {
+        __notesapp_layout__?: () => { tiles: Record<string, { mode: string }> };
+      }
+    ).__notesapp_layout__;
+    return fn
+      ? Object.values(fn().tiles).some(
+          (t) => (t as { mode: string }).mode === "editor",
+        )
+      : false;
+  });
+  if (!hasEditor) {
+    // Toggle the first available preview tile back to editor via its mode
+    // indicator button (one-click toggle, no picker opens for non-.md).
+    const previewId = await browser.execute(() => {
+      const fn = (
+        window as Window & {
+          __notesapp_layout__?: () => { tiles: Record<string, { mode: string }> };
+        }
+      ).__notesapp_layout__;
+      if (!fn) return null;
+      const { tiles } = fn();
+      return (
+        Object.keys(tiles).find((k) => tiles[k].mode === "preview") ?? null
+      );
+    });
+    if (previewId) {
+      await clickById(`tile-mode-indicator-${previewId}`);
+      await browser.pause(500);
+    }
+    await $('//*[@data-tile-mode="editor"]').waitForExist({ timeout: 5000 });
+  }
 }
 
 /** Return the caret startOffset within the current ProseMirror selection. */
@@ -2302,20 +2474,7 @@ describe("WYSIWYG Emacs keybindings", function () {
       console.log("  WYSIWYG Emacs E2E SKIPPED — ISSUE-003 (macOS E2E unavailable).");
     }
     await waitForId("app-root", 25000);
-    // Remove any overlay left open by earlier failing tests via JavaScript so
-    // that subsequent clicks are not intercepted by a modal backdrop.
-    await browser.execute(() => {
-      const overlays = [
-        '[data-testid="buffer-switcher-overlay"]',
-        '[data-testid="unsaved-dialog-overlay"]',
-        '[data-testid="missing-recovery-overlay"]',
-        '[data-testid="quit-dialog-overlay"]',
-      ];
-      for (const sel of overlays) {
-        const el = document.querySelector(sel);
-        if (el && el.parentNode) el.parentNode.removeChild(el);
-      }
-    });
+    await dismissOpenOverlays();
     await browser.pause(300);
   });
 
@@ -2460,5 +2619,137 @@ describe("WYSIWYG Emacs keybindings", function () {
     // After moving forward one word, more text precedes the cursor than before.
     const textAfter = await getTextBeforeCursorInBlock();
     expect(textAfter.length).toBeGreaterThan(textBefore.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WYSIWYG table insertion via toolbar (ISSUE-014, SPEC.md §5.2)
+//
+// Uses the `emacs.md` fixture note and the same WYSIWYG setup as the
+// Emacs-keybindings suite above.  Skipped on macOS (ISSUE-003).
+// ---------------------------------------------------------------------------
+
+describe("WYSIWYG toolbar — table insertion", function () {
+  before(async () => {
+    if (WYSIWYG_SKIP_ON_MACOS) {
+      console.log("  WYSIWYG toolbar E2E SKIPPED — ISSUE-003 (macOS E2E unavailable).");
+    }
+    await waitForId("app-root", 25000);
+    await dismissOpenOverlays();
+    await browser.pause(300);
+  });
+
+  beforeEach(async function () {
+    if (WYSIWYG_SKIP_ON_MACOS) { this.skip(); return; }
+
+    // Focus the first editor tile, load the emacs fixture, and switch to Preview.
+    await clickFirstEditorTileForWysiwyg();
+    await loadNoteInFocusedTile("emacs");
+
+    const tileId = await browser.execute(() => {
+      const fn = (window as Window & { __notesapp_layout__?: () => { focusedTileId: string | null } }).__notesapp_layout__;
+      return fn ? fn().focusedTileId : null;
+    });
+    if (!tileId) throw new Error("No focused tile after loading emacs note");
+
+    await browser.execute((id) => {
+      const el = document.querySelector(`[data-testid="tile-mode-indicator-${id}"]`) as HTMLElement | null;
+      if (el) el.click();
+    }, tileId);
+
+    await browser.waitUntil(
+      async () => {
+        const text = await browser.execute(() => {
+          const pm = document.querySelector(".ProseMirror");
+          return pm ? pm.textContent : "";
+        });
+        return typeof text === "string" && text.includes("abc def");
+      },
+      { timeout: 8000, interval: 150, timeoutMsg: "emacs.md content not visible in WYSIWYG editor within 8s" },
+    );
+    await browser.pause(300);
+    await focusWysiwygEditor();
+  });
+
+  it("Insert-Table button inserts a table node into the ProseMirror document", async () => {
+    // Click the Insert-Table button via JavaScript (WebKitWebDriver intercept workaround).
+    await browser.execute(() => {
+      const btn = document.querySelector('[title="Insert table"]') as HTMLElement | null;
+      if (btn) btn.click();
+    });
+    await browser.pause(500);
+
+    const hasTable = await browser.execute(() => {
+      return !!document.querySelector(".ProseMirror table");
+    });
+    expect(hasTable).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WYSIWYG drawing block insertion via C-c d (ISSUE-014, SPEC.md §5.2)
+//
+// Verifies that C-c d inserts a drawing-block node in the Preview tile and
+// that the corresponding drawing fence appears in the sibling Editor tile.
+// Skipped on macOS (ISSUE-003).
+// ---------------------------------------------------------------------------
+
+describe("WYSIWYG drawing block insertion (C-c d)", function () {
+  before(async () => {
+    if (WYSIWYG_SKIP_ON_MACOS) {
+      console.log("  Drawing block E2E SKIPPED — ISSUE-003 (macOS E2E unavailable).");
+    }
+    await waitForId("app-root", 25000);
+    await dismissOpenOverlays();
+    await browser.pause(300);
+  });
+
+  beforeEach(async function () {
+    if (WYSIWYG_SKIP_ON_MACOS) { this.skip(); return; }
+
+    // Load the emacs fixture into the first editor tile, then switch to Preview.
+    await clickFirstEditorTileForWysiwyg();
+    await loadNoteInFocusedTile("emacs");
+
+    const tileId = await browser.execute(() => {
+      const fn = (window as Window & { __notesapp_layout__?: () => { focusedTileId: string | null } }).__notesapp_layout__;
+      return fn ? fn().focusedTileId : null;
+    });
+    if (!tileId) throw new Error("No focused tile after loading emacs note");
+
+    await browser.execute((id) => {
+      const el = document.querySelector(`[data-testid="tile-mode-indicator-${id}"]`) as HTMLElement | null;
+      if (el) el.click();
+    }, tileId);
+
+    await browser.waitUntil(
+      async () => {
+        const text = await browser.execute(() => {
+          const pm = document.querySelector(".ProseMirror");
+          return pm ? pm.textContent : "";
+        });
+        return typeof text === "string" && text.includes("abc def");
+      },
+      { timeout: 8000, interval: 150, timeoutMsg: "emacs.md content not visible in WYSIWYG editor within 8s" },
+    );
+    await browser.pause(300);
+    await focusWysiwygEditor();
+  });
+
+  it("C-c d inserts a drawing-block node visible in the WYSIWYG Preview tile", async () => {
+    // Send C-c then d to trigger the drawing-block insertion chord.
+    await browser.action("key")
+      .down(KEY.CTRL).down("c").up("c").up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+    await browser.action("key").down("d").up("d").perform();
+
+    // Allow the async next_drawing_number invoke + insertContent to settle.
+    await browser.pause(1000);
+
+    const hasDrawingBlock = await browser.execute(() => {
+      return !!document.querySelector('[data-testid="drawing-block"]');
+    });
+    expect(hasDrawingBlock).toBe(true);
   });
 });

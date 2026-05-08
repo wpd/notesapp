@@ -292,6 +292,9 @@ export default function BufferSwitcher({
     >
       <div
         data-testid="buffer-switcher"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Buffer switcher"
         onClick={(e) => e.stopPropagation()}
         style={dialogStyle}
       >

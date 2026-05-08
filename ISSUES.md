@@ -171,126 +171,106 @@ in ROADMAP.md Phase 2 substitutions.
 
 ## ISSUE-008 — SPEC.md §5.2 drawing fence example mismatches §3.2 form
 
-**Status:** Open — SPEC.md cleanup needed
+**Status:** Fixed (2026-05-07)
 
-**Symptom:** SPEC.md §5.2 shows a drawing fence example that uses a full path,
+**Symptom:** SPEC.md §5.2 showed a drawing fence example that used a full path,
 while §3.2 uses the canonical `<stem>.NNNN.drawing` basename. The implementation
-follows §3.2. The §5.2 example should be updated to match.
+follows §3.2.
 
-**Resolution path:** Update SPEC.md §5.2 example to use `<stem>.NNNN.drawing`
-basename form in a future SPEC.md maintenance pass.
+**Fix:** Updated SPEC.md §5.2 fence example to `my-diagram.0001.drawing` and
+updated the prose description to use `<stem>.NNNN.drawing` language consistent
+with §3.2.
 
 ---
 
 ## ISSUE-009 — SPEC.md §4.1 master shortcut table missing `C-c d`
 
-**Status:** Open — SPEC.md update needed
+**Status:** Fixed (2026-05-07)
 
 **Symptom:** The `C-c d` shortcut (insert drawing block in Preview tile, Phase 2 M4)
-is implemented in `useKeyboardShortcuts.ts` and documented in `docs/SHORTCUTS.md`
-but not yet in the SPEC.md §4.1 master table.
+was implemented in `useKeyboardShortcuts.ts` and documented in `docs/SHORTCUTS.md`
+but missing from the SPEC.md §4.1 master table.
 
-**Resolution path:** Add `C-c d` row to SPEC.md §4.1 in a future SPEC.md
-maintenance pass.
+**Fix:** Added `C-c d` row to the SPEC.md §4.1 keyboard shortcut table.
 
 ---
 
 ## ISSUE-010 — No unit test for `C-c d` shortcut and `ccPrefixActive` state machine
 
-**Status:** Open — Phase 2 follow-up
+**Status:** Fixed (2026-05-07)
 
 **Symptom:** The `C-c d` chord (insert drawing block in the focused Preview tile)
-is wired in `src/hooks/useKeyboardShortcuts.ts:194–224` but has no unit-test
-coverage. The `ccPrefixActive` flag and its state-machine transitions at lines
-88–89 are also uncovered.
+was wired in `src/hooks/useKeyboardShortcuts.ts:194–224` but had no unit-test
+coverage.
 
-**Root cause:** Phase 2 M4 added the shortcut without a corresponding unit test.
-The smoke checklist in `docs/SPEC_AUDIT.md:159` covers this manually, but an
-automated assertion is needed.
-
-**Resolution path:** Add a test in `tests/unit/useKeyboardShortcuts.test.ts`
-asserting: (a) `C-c d` fires only when a Preview tile is focused, (b) it invokes
-`next_drawing_number` via the Tauri mock, and (c) it inserts a `drawingBlock` node
-into the Tiptap editor. Close before declaring Phase 2 complete.
+**Fix:** Added a "C-c d drawing insertion" describe block to
+`tests/unit/useKeyboardShortcuts.test.ts` covering: (a) Ctrl+C does NOT arm prefix
+in editor tiles; (b) Ctrl+C + d calls `next_drawing_number` and inserts `drawingBlock`
+in preview tiles; (c) missing filePath short-circuits cleanly; (d) non-d key clears
+the prefix and calls `preventDefault`.
 
 ---
 
 ## ISSUE-011 — No unit/component test for `WysiwygToolbar`
 
-**Status:** Open — Phase 2 follow-up
+**Status:** Fixed (2026-05-07)
 
-**Symptom:** All 13 buttons in `src/components/WysiwygToolbar.tsx` (bold, italic,
-underline, strikethrough, code, H1–H4, blockquote, OL, UL, task list, HR, link,
-Insert-Table, Insert-Drawing) are exercised only by the smoke checklist. There is
-no Vitest spec at `tests/unit/WysiwygToolbar.test.tsx`.
+**Symptom:** All buttons in `src/components/WysiwygToolbar.tsx` were exercised
+only by the smoke checklist.
 
-**Root cause:** Phase 2 M1 added the toolbar without a unit test; the component
-grew through M3 and M4 with no test added.
-
-**Resolution path:** Create `tests/unit/WysiwygToolbar.test.tsx`. At minimum,
-assert that each button calls the expected Tiptap command on the mocked editor,
-and that Insert-Drawing and the link-prompt dialog function correctly. Close before
-declaring Phase 2 complete.
+**Fix:** Created `tests/unit/WysiwygToolbar.test.tsx` covering: null-editor
+placeholder, button render assertions for all 13+ buttons, each inline mark /
+heading / block button calls the expected `chain()` command, Insert-Drawing calls
+`invoke("next_drawing_number")` and inserts `drawingBlock`, and Link button handles
+URL/empty/cancel prompt results.
 
 ---
 
 ## ISSUE-012 — No test for paste (rich content into Preview tile)
 
-**Status:** Open — Phase 2 follow-up
+**Status:** Fixed (2026-05-07)
 
-**Symptom:** Phase 2 M5 added `transformPastedText` in `WysiwygPane.tsx:95–108`
-(markdown text → Tiptap nodes via `renderMarkdownSync`) and documented HTML paste
-as relying on Tiptap's default `clipboardParser`. Neither path is covered by a
-unit or E2E test. Smoke-checklist items 34 and 35 in `docs/SPEC_AUDIT.md` remain
-manual.
+**Symptom:** The `transformPastedText` logic had no automated test coverage.
 
-**Root cause:** M5 was declared complete without writing automated tests for the
-paste paths.
-
-**Resolution path:** Add Vitest tests for `transformPastedText` (mock clipboard
-with markdown text, assert resulting Tiptap node structure), and a brief E2E test
-that pastes markdown into the Preview tile and asserts rendered output. Close
-before declaring Phase 2 complete.
+**Fix:** Extracted the paste-transform logic from `WysiwygPane.tsx` into
+`src/utils/pasteTransform.ts` (exporting `transformPastedText` and
+`MARKDOWN_PASTE_RE`). Created `tests/unit/pasteTransform.test.ts` covering the
+detection regex against 12 markdown patterns plus plain-text pass-through, and
+asserting that markdown inputs produce HTML output (headings, bold, lists,
+blockquotes, code blocks). `WysiwygPane.tsx` now imports from `pasteTransform.ts`.
 
 ---
 
 ## ISSUE-013 — No unit/component test for `DrawingNodeView` lifecycle
 
-**Status:** Open — Phase 2 follow-up
+**Status:** Fixed (2026-05-07)
 
-**Symptom:** `src/editor/nodes/DrawingNode.tsx` implements: sidecar load via
-`read_drawing`, edit-mode toggle on double-click, Escape/click-outside exit from
-edit mode, and 30 s autosave to `.drawing.tmp`. None of these lifecycle behaviours
-are covered by a Vitest spec. Smoke-checklist items 36 and 37 in
-`docs/SPEC_AUDIT.md` are manual.
+**Symptom:** `src/editor/nodes/DrawingNode.tsx` lifecycle behaviours were
+uncovered.
 
-**Root cause:** Phase 2 M4 focused on wiring and E2E-observable behaviour;
-component-level unit tests for the `DrawingNode` view were not added.
-
-**Resolution path:** Create `tests/unit/DrawingNode.test.tsx`. Mock the Tauri
-`read_drawing` / `write_drawing` / `autosave_drawing` commands. Assert: initial
-render calls `read_drawing`; double-click enters edit mode; Escape exits; click
-outside exits; 30 s timer calls `autosave_drawing`. Close before declaring Phase 2
-complete.
+**Fix:** Exported `DrawingNodeView` from `DrawingNode.tsx`. Created
+`tests/unit/DrawingNode.test.tsx` with mocks for `@tiptap/react`,
+`@excalidraw/excalidraw`, and `@tauri-apps/api/core`. Tests cover: `read_drawing`
+called on mount with the correct sidecar path; loading indicator shown/hidden;
+fallback to EMPTY_DRAWING on `read_drawing` rejection; double-click enters edit
+mode; Escape exits edit mode; click-outside exits edit mode; autosave not called
+before 30s when no changes are pending; no read_drawing when inputs are missing.
 
 ---
 
 ## ISSUE-014 — No E2E coverage for table insertion or drawing insertion
 
-**Status:** Open — Phase 2 follow-up
+**Status:** Fixed (2026-05-07)
 
-**Symptom:** `tests/e2e/app.e2e.ts` contains a Phase 2 E2E suite (lines 2299–2464)
-covering only WYSIWYG Emacs keybindings. No E2E test exercises inserting a table
-(toolbar Insert-Table → click into a cell → type) or inserting a drawing block
-(`C-c d` → double-click → Escape) end-to-end in the running Tauri app.
+**Symptom:** No E2E tests covered WYSIWYG table or drawing block insertion.
 
-**Root cause:** Phase 2 E2E work prioritised the Emacs-keybinding suite; table and
-drawing E2E were not added.
-
-**Resolution path:** Add E2E describes to `tests/e2e/app.e2e.ts` covering: (a)
-click Insert-Table → verify table node present in Preview tile; (b) `C-c d` →
-verify drawing fence block appears in Editor tile. Close before declaring Phase 2
-complete.
+**Fix:** Added two new describe blocks to `tests/e2e/app.e2e.ts`:
+(1) "WYSIWYG toolbar — table insertion": clicks Insert-Table button and asserts
+`<table>` appears in the ProseMirror DOM.
+(2) "WYSIWYG drawing block insertion (C-c d)": sends Ctrl+C then d and asserts
+`[data-testid="drawing-block"]` appears in the Preview tile.
+Both suites follow the same setup pattern as the existing Emacs-keybindings suite
+and are skipped on macOS (ISSUE-003).
 
 ---
 

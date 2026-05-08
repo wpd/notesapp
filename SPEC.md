@@ -320,6 +320,7 @@ The application provides a configuration item for selecting current state-of-the
 | Emacs style Query Replace and Query Replace regexp | `M-%`, `M-C-%` |
 | Move cursor to next visible Markdown header in Editor tile | `C-c` `C-n` |
 | Move cursor to previous visible Markdown header in Editor tile | `C-c` `C-p` |
+| Insert a new drawing block in the focused Preview tile | `C-c d` |
 | Emacs style use of ESC as an alternative to the META key ||
 
 
@@ -516,7 +517,7 @@ Drawings are **block-level elements** in the document flow — they sit between 
 
 ````markdown
 ```drawing
-my-diagram.drawing
+my-diagram.0001.drawing
 ```
 ````
 
@@ -524,7 +525,7 @@ In the Preview tile, this renders as an embedded Excalidraw canvas at that posit
 
 - Double-click the rendered drawing to enter **edit mode**: the full Excalidraw toolbar appears (freehand pen, straight line, arrow, rectangle, ellipse, text label, eraser, color/stroke picker)
 - Click outside or press `Escape` to exit edit mode; the canvas returns to a static rendered view
-- The drawing content is stored in `notes/<filename>.NNNN.drawing` (where `NNNN` is a unique number within the `filename.md` file)
+- The drawing content is stored in `notes/<stem>.NNNN.drawing` (where `<stem>` is the note's filename without extension and `NNNN` is a unique 4-digit number)
 - Insert a new drawing block from the editor toolbar or via `C-c d` (keyboard shortcut); the app inserts the fenced block at cursor position
 - **Export:** drawings are exported as embedded SVG or PNG in PDF/HTML/LaTeX output
 

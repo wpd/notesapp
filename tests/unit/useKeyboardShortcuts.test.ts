@@ -18,6 +18,7 @@ import {
   registerWysiwygEditor,
   unregisterWysiwygEditor,
 } from "../../src/editor/wysiwygRegistry";
+import * as tauriCore from "@tauri-apps/api/core";
 
 // Stub @tauri-apps/api/core so invoke() resolves immediately in jsdom.
 vi.mock("@tauri-apps/api/core", () => ({
@@ -504,5 +505,117 @@ describe("useKeyboardShortcuts — Ctrl+=/-/0 font size", () => {
     act(() => { fireKey("-", { ctrlKey: true }); }); // C-x C-- is unknown chord, clears prefix
     // tileFontScale should remain untouched
     expect(useLayoutStore.getState().tileFontScale["tile-a"]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-c d — insert drawing block (SPEC.md §4.1, ISSUE-010)
+// ---------------------------------------------------------------------------
+
+describe("useKeyboardShortcuts — C-c d drawing insertion", () => {
+  const invokeStub = tauriCore.invoke as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    invokeStub.mockReset();
+    invokeStub.mockResolvedValue(null);
+  });
+
+  it("Ctrl+C does NOT arm ccPrefixActive when focused tile is in editor mode", () => {
+    seedTwoTiles(); // tile-a = editor (focused), tile-b = preview
+    mountHook();
+
+    act(() => { fireKey("c", { ctrlKey: true }); });
+    // If ccPrefixActive were armed, pressing 'd' next would call invoke.
+    act(() => { fireKey("d"); });
+
+    expect(invokeStub).not.toHaveBeenCalledWith(
+      "next_drawing_number",
+      expect.anything(),
+    );
+  });
+
+  it("Ctrl+C arms the cc-prefix and next 'd' calls next_drawing_number for a preview tile", async () => {
+    // Put a preview tile in focus with a known filePath.
+    useLayoutStore.setState({
+      mosaicTree: { direction: "row" as const, first: "tile-p", second: "tile-e", splitPercentage: 50 },
+      tiles: {
+        "tile-p": { id: "tile-p", mode: "preview", filePath: "/notes/test.md" },
+        "tile-e": { id: "tile-e", mode: "editor", filePath: "/notes/test.md" },
+      },
+      focusedTileId: "tile-p",
+    });
+
+    // Register a minimal mock Tiptap editor so the insertion code path can run.
+    const insertContentMock = vi.fn().mockReturnValue({ run: vi.fn() });
+    const chainMock = { focus: vi.fn(), insertContent: insertContentMock };
+    chainMock.focus.mockReturnValue(chainMock);
+    const mockWysiwyg = {
+      chain: vi.fn().mockReturnValue(chainMock),
+    } as unknown as TiptapEditor;
+    registerWysiwygEditor("tile-p", mockWysiwyg);
+
+    invokeStub.mockImplementation((cmd: string) =>
+      cmd === "next_drawing_number" ? Promise.resolve(1) : Promise.resolve(null),
+    );
+
+    mountHook();
+
+    act(() => { fireKey("c", { ctrlKey: true }); });
+    act(() => { fireKey("d"); });
+
+    // Allow the async invoke promise to settle.
+    await act(async () => { await Promise.resolve(); });
+
+    expect(invokeStub).toHaveBeenCalledWith("next_drawing_number", { notePath: "/notes/test.md" });
+    expect(insertContentMock).toHaveBeenCalledWith({
+      type: "drawingBlock",
+      attrs: { filename: "test.0001.drawing" },
+    });
+
+    unregisterWysiwygEditor("tile-p");
+  });
+
+  it("Ctrl+C in preview tile with no filePath does not call next_drawing_number", async () => {
+    useLayoutStore.setState({
+      mosaicTree: { direction: "row" as const, first: "tile-p", second: "tile-e", splitPercentage: 50 },
+      tiles: {
+        "tile-p": { id: "tile-p", mode: "preview", filePath: null },
+        "tile-e": { id: "tile-e", mode: "editor", filePath: "/notes/test.md" },
+      },
+      focusedTileId: "tile-p",
+    });
+
+    mountHook();
+    act(() => { fireKey("c", { ctrlKey: true }); });
+    act(() => { fireKey("d"); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(invokeStub).not.toHaveBeenCalledWith("next_drawing_number", expect.anything());
+  });
+
+  it("Ctrl+C then non-d key clears the prefix and calls preventDefault on the second key", () => {
+    useLayoutStore.setState({
+      mosaicTree: { direction: "row" as const, first: "tile-p", second: "tile-e", splitPercentage: 50 },
+      tiles: {
+        "tile-p": { id: "tile-p", mode: "preview", filePath: "/notes/test.md" },
+        "tile-e": { id: "tile-e", mode: "editor", filePath: "/notes/test.md" },
+      },
+      focusedTileId: "tile-p",
+    });
+
+    mountHook();
+
+    act(() => { fireKey("c", { ctrlKey: true }); });
+
+    const nonDEvent = new KeyboardEvent("keydown", {
+      key: "x",
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(nonDEvent);
+
+    // The non-d key should be consumed (prefix cleared, no insertion).
+    expect(nonDEvent.defaultPrevented).toBe(true);
+    expect(invokeStub).not.toHaveBeenCalledWith("next_drawing_number", expect.anything());
   });
 });
