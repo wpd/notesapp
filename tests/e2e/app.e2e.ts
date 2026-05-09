@@ -2752,4 +2752,100 @@ describe("WYSIWYG drawing block insertion (C-c d)", function () {
     });
     expect(hasDrawingBlock).toBe(true);
   });
+
+  it("double-clicking a drawing block shows the Excalidraw toolbar", async () => {
+    // Insert the drawing block.
+    await browser.action("key")
+      .down(KEY.CTRL).down("c").up("c").up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+    await browser.action("key").down("d").up("d").perform();
+    await browser.pause(1500);
+
+    const drawingBlock = await $('[data-testid="drawing-block"]');
+    await drawingBlock.waitForExist({ timeout: 5000 });
+
+    // Double-click to enter edit mode. The NodeViewWrapper has contenteditable=false
+    // so WebDriver refuses to click it directly; dispatch a synthetic dblclick on
+    // the inner container div (where the onDoubleClick handler lives).
+    await browser.execute(() => {
+      const block = document.querySelector('[data-testid="drawing-block"]');
+      const inner = block?.querySelector("div") as HTMLElement | null;
+      inner?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    });
+    // Excalidraw lazy-loads on first open; give it time to settle.
+    await browser.pause(2000);
+
+    // Assert the Excalidraw toolbar is present and has a non-zero bounding rect.
+    // This would have caught the missing-CSS regression (DOM exists but
+    // everything collapses to zero size).
+    const toolbarVisible = await browser.execute(() => {
+      const toolbar = document.querySelector(".excalidraw .App-toolbar");
+      if (!toolbar) return false;
+      const rect = toolbar.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+    expect(toolbarVisible).toBe(true);
+  });
+
+  it("drawing block retains its filename after Escape, bridge re-sync, and scroll", async () => {
+    // Insert a drawing block.
+    await browser.action("key")
+      .down(KEY.CTRL).down("c").up("c").up(KEY.CTRL)
+      .perform();
+    await browser.pause(150);
+    await browser.action("key").down("d").up("d").perform();
+    await browser.pause(1500);
+
+    const drawingBlock = await $('[data-testid="drawing-block"]');
+    await drawingBlock.waitForExist({ timeout: 5000 });
+
+    // Capture the assigned filename before any round-trips.
+    const originalFilename = await browser.execute(() => {
+      const block = document.querySelector('[data-testid="drawing-block"]');
+      return block ? block.getAttribute("data-filename") : null;
+    });
+    expect(typeof originalFilename).toBe("string");
+    expect((originalFilename as string).length).toBeGreaterThan(0);
+
+    // Exit edit mode via Escape (also triggers sidecar save).
+    await browser.action("key").down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(200);
+
+    // Force a full forward bridge re-sync: wait for the reverse-bridge debounce
+    // (150 ms) to flush the drawing fence into Y.Text, then wait for the forward
+    // bridge to rebuild xfrag from Y.Text (the WYSIWYG update listener will have
+    // already written the drawing fence back in; we just need to ensure the
+    // bridge origin guard doesn't eat it on a second observer tick).
+    await browser.pause(500);
+
+    // Scroll the WYSIWYG container to the bottom, then back to the top.
+    await browser.execute(() => {
+      const pm = document.querySelector(".ProseMirror");
+      const scroller = pm?.parentElement ?? pm;
+      if (scroller) {
+        scroller.scrollTop = scroller.scrollHeight;
+      }
+    });
+    await browser.pause(300);
+    await browser.execute(() => {
+      const pm = document.querySelector(".ProseMirror");
+      const scroller = pm?.parentElement ?? pm;
+      if (scroller) {
+        scroller.scrollTop = 0;
+      }
+    });
+    await browser.pause(300);
+
+    // The drawing block must still be present with the original filename intact.
+    const blockAfter = await $('[data-testid="drawing-block"]');
+    await blockAfter.waitForExist({ timeout: 3000 });
+
+    const filenameAfter = await browser.execute(() => {
+      const block = document.querySelector('[data-testid="drawing-block"]');
+      return block ? block.getAttribute("data-filename") : null;
+    });
+
+    expect(filenameAfter).toBe(originalFilename);
+  });
 });

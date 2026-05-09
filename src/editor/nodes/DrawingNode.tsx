@@ -156,7 +156,7 @@ export function DrawingNodeView({ node, editor }: NodeViewProps) {
   }, []);
 
   return (
-    <NodeViewWrapper contentEditable={false} data-testid="drawing-block">
+    <NodeViewWrapper contentEditable={false} data-testid="drawing-block" data-filename={filename}>
       <div
         ref={containerRef}
         onDoubleClick={() => !editMode && setEditMode(true)}
@@ -231,21 +231,23 @@ export const DrawingBlock = Node.create({
   },
 
   addAttributes() {
-    return { filename: { default: "" } };
+    return {
+      filename: {
+        default: "",
+        parseHTML: (element: Element) =>
+          element.getAttribute("data-filename") ?? "",
+        renderHTML: (attrs: Record<string, unknown>) =>
+          attrs.filename ? { "data-filename": attrs.filename as string } : {},
+      },
+    };
   },
 
   parseHTML() {
     return [{ tag: 'div[data-type="drawing"]' }];
   },
 
-  renderHTML({ node }) {
-    return [
-      "div",
-      {
-        "data-type": "drawing",
-        "data-filename": node.attrs.filename as string,
-      },
-    ];
+  renderHTML({ HTMLAttributes }) {
+    return ["div", { "data-type": "drawing", ...HTMLAttributes }];
   },
 
   addNodeView() {

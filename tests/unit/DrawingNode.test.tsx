@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import * as tauriCore from "@tauri-apps/api/core";
 import type { NodeViewProps } from "@tiptap/core";
-import { DrawingNodeView } from "../../src/editor/nodes/DrawingNode";
+import { DrawingNodeView, DrawingBlock } from "../../src/editor/nodes/DrawingNode";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -272,6 +272,47 @@ describe("DrawingNodeView — 30s autosave timer", () => {
 
     // No pending data — autosave_drawing should still not have been called.
     expect(invokeStub).not.toHaveBeenCalledWith("autosave_drawing", expect.anything());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DrawingBlock extension attribute config (parseHTML / renderHTML symmetry)
+// ---------------------------------------------------------------------------
+
+describe("DrawingBlock extension — filename attribute parseHTML / renderHTML", () => {
+  type AttrDef = {
+    default: unknown;
+    parseHTML?: (element: Element) => unknown;
+    renderHTML?: (attrs: Record<string, unknown>) => Record<string, string>;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawConfig = (DrawingBlock as any) as {
+    config: { addAttributes?: () => Record<string, AttrDef> };
+  };
+
+  it("parseHTML extracts data-filename from a DOM element", () => {
+    const attrs = rawConfig.config.addAttributes?.() ?? {};
+    const el = document.createElement("div");
+    el.setAttribute("data-filename", "note.0001.drawing");
+    expect(attrs.filename.parseHTML?.(el)).toBe("note.0001.drawing");
+  });
+
+  it("parseHTML returns empty string when data-filename is absent", () => {
+    const attrs = rawConfig.config.addAttributes?.() ?? {};
+    const el = document.createElement("div");
+    expect(attrs.filename.parseHTML?.(el)).toBe("");
+  });
+
+  it("renderHTML produces data-filename when filename is non-empty", () => {
+    const attrs = rawConfig.config.addAttributes?.() ?? {};
+    expect(attrs.filename.renderHTML?.({ filename: "note.0001.drawing" })).toEqual({
+      "data-filename": "note.0001.drawing",
+    });
+  });
+
+  it("renderHTML produces no attributes when filename is empty", () => {
+    const attrs = rawConfig.config.addAttributes?.() ?? {};
+    expect(attrs.filename.renderHTML?.({ filename: "" })).toEqual({});
   });
 });
 

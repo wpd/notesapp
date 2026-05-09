@@ -11,6 +11,7 @@ import useLayoutStore from "./stores/layoutStore";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import "katex/dist/katex.min.css";
+import "@excalidraw/excalidraw/index.css";
 
 interface PreloadedData {
   /** Set on success; null on error (env var pointed at an invalid path). */
