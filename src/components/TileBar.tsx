@@ -2,7 +2,8 @@
 // Copyright (c) 2026 NotesApp Contributors
 // Co-authored with Claude (Anthropic) — https://www.anthropic.com/claude
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import useLayoutStore, { TileMode } from "../stores/layoutStore";
 import useEditorStore from "../stores/editorStore";
 
@@ -50,6 +51,15 @@ export default function TileBar({
   }, [mosaicTree, tileId]);
 
   const isPinned = pinnedTileId === tileId;
+
+  const isPdfReference = mode === "reference" && filePath?.endsWith(".pdf");
+  const [annotationCount, setAnnotationCount] = useState(0);
+  useEffect(() => {
+    if (!isPdfReference || !filePath) { setAnnotationCount(0); return; }
+    invoke<{ highlights: unknown[] }>("read_pdf_annotations", { path: filePath })
+      .then((a) => setAnnotationCount(a.highlights.length))
+      .catch(() => setAnnotationCount(0));
+  }, [isPdfReference, filePath]);
 
   const fileName =
     mode === "missing"
@@ -185,6 +195,20 @@ export default function TileBar({
                 title="Unsaved changes"
               >
                 •
+              </span>
+            )}
+            {isPdfReference && annotationCount > 0 && (
+              <span
+                data-testid={`pdf-annotation-badge-${tileId}`}
+                style={{
+                  fontSize: "10px",
+                  color: "rgba(255,255,255,0.5)",
+                  marginLeft: "4px",
+                  whiteSpace: "nowrap",
+                }}
+                title={`${annotationCount} highlight${annotationCount === 1 ? "" : "s"}`}
+              >
+                ({annotationCount} highlight{annotationCount === 1 ? "" : "s"})
               </span>
             )}
           </span>

@@ -6,5 +6,7 @@ pub mod drawings;
 pub mod layout;
 pub mod notes;
 pub mod project;
+pub mod references;
+pub mod search;
 pub mod spellcheck;
 pub mod watcher;

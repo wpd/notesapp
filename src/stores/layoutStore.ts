@@ -21,6 +21,8 @@ export interface TileState {
   filePath: string | null;
   /** For Missing tiles: the original file path that could not be resolved */
   missingPath?: string;
+  /** For Reference tiles showing a PDF: persisted page + zoom state. */
+  pdfState?: { page: number; zoom: number };
 }
 
 /**
@@ -58,7 +60,12 @@ interface PersistedLayout {
   tree: MosaicNode<string> | null;
   tiles: Record<
     string,
-    { mode: TileMode; filePath: string | null; missingPath?: string }
+    {
+      mode: TileMode;
+      filePath: string | null;
+      missingPath?: string;
+      pdfState?: { page: number; zoom: number };
+    }
   >;
 }
 
@@ -72,6 +79,7 @@ interface LegacyPersistedLayout {
       mode?: string;
       filePath: string | null;
       missingPath?: string;
+      pdfState?: { page: number; zoom: number };
     }
   >;
 }
@@ -95,6 +103,10 @@ interface LayoutStoreState {
   cxPrefixActive: boolean;
   /** Per-tile font scale factor. Absent key means 1.0 (default). */
   tileFontScale: Record<string, number>;
+  /** Collapsible sidebar section open/closed state. */
+  sidebarSections: { explorer: boolean; search: boolean; references: boolean };
+  /** Incremented each time the user triggers Ctrl/Cmd+Shift+F to focus search. */
+  sidebarSearchFocusRequest: number;
 
   // Getters
   getTileIds: () => string[];
@@ -131,6 +143,12 @@ interface LayoutStoreState {
   incrementTileFontScale: (tileId: string) => void;
   decrementTileFontScale: (tileId: string) => void;
   resetTileFontScale: (tileId: string) => void;
+  /** Persist PDF page + zoom state for a Reference tile (SPEC.md §5.3). */
+  setTilePdfState: (tileId: string, pdfState: { page: number; zoom: number }) => void;
+  /** Toggle a collapsible sidebar section open/closed. */
+  setSidebarSection: (section: keyof LayoutStoreState["sidebarSections"], open: boolean) => void;
+  /** Increment the focus-search request counter (watched by SidebarSearchSection). */
+  requestSidebarSearchFocus: () => void;
 
   /** Count how many tiles are bound to a given filePath */
   countTilesForFile: (filePath: string) => number;
@@ -205,6 +223,8 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
   wordWrap: {},
   cxPrefixActive: false,
   tileFontScale: {},
+  sidebarSections: { explorer: true, search: false, references: false },
+  sidebarSearchFocusRequest: 0,
 
   getTileIds: () => {
     const { mosaicTree } = get();
@@ -545,7 +565,12 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
       tiles: Object.fromEntries(
         Object.entries(tiles).map(([id, t]) => [
           id,
-          { mode: t.mode, filePath: t.filePath, missingPath: t.missingPath },
+          {
+            mode: t.mode,
+            filePath: t.filePath,
+            missingPath: t.missingPath,
+            pdfState: t.pdfState,
+          },
         ]),
       ),
     };
@@ -608,6 +633,7 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
             mode: resolvedMode,
             filePath: t.filePath,
             missingPath: t.missingPath,
+            pdfState: t.pdfState,
           };
         }
       });
@@ -685,6 +711,31 @@ const useLayoutStore = create<LayoutStoreState>((set, get) => ({
       delete scales[tileId];
       return { tileFontScale: scales };
     });
+  },
+
+  setTilePdfState: (tileId, pdfState) => {
+    set((state) => {
+      const tile = state.tiles[tileId];
+      if (!tile) return state;
+      return {
+        tiles: { ...state.tiles, [tileId]: { ...tile, pdfState } },
+      };
+    });
+    schedulePersist();
+  },
+
+  setSidebarSection: (section, open) => {
+    set((state) => ({
+      sidebarSections: { ...state.sidebarSections, [section]: open },
+    }));
+  },
+
+  requestSidebarSearchFocus: () => {
+    set((state) => ({
+      sidebarVisible: true,
+      sidebarSections: { ...state.sidebarSections, search: true },
+      sidebarSearchFocusRequest: state.sidebarSearchFocusRequest + 1,
+    }));
   },
 
   countTilesForFile: (filePath) => {

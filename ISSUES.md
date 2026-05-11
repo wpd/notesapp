@@ -274,4 +274,62 @@ and are skipped on macOS (ISSUE-003).
 
 ---
 
+## ISSUE-015 — PDF.js worker hosting: WKWebView vs WebKitGTK verification needed
+
+**Status:** Open (2026-05-09)
+
+**Symptom:** The PDF.js worker is hosted at `/pdfjs/pdf.worker.min.mjs` under
+`public/`. On WebKitGTK (Linux dev) the `asset://localhost/pdfjs/...` URL is
+served correctly via Tauri's asset protocol. On WKWebView (macOS production) the
+URL may need a different path prefix depending on Tauri v2 asset configuration.
+
+**Fix:** Run the PDF viewer on macOS and verify the worker loads without console
+errors. If the worker URL must differ, detect the platform at runtime and choose
+the appropriate URL. Track in `COMPAT.md`.
+
+---
+
+## ISSUE-016 — `pdf-extract` is synchronous and can block on large PDFs
+
+**Status:** Open (2026-05-09)
+
+**Symptom:** `pdf_extract::extract_text` is synchronous. For PDFs > 10 MB,
+calling it from `SearchIndex::upsert_path` during watcher events or `full_reindex`
+blocks the async executor.
+
+**Fix:** Wrap calls to `extract_text` in `tokio::task::spawn_blocking` at the
+call site in `search/index.rs`. The method signature already returns `Result` and
+can propagate the join error.
+
+---
+
+## ISSUE-017 — WebKit clipboard API requires a user gesture for `writeText`
+
+**Status:** Open (2026-05-09)
+
+**Symptom:** `navigator.clipboard.writeText` requires a trusted user gesture in
+WebKit. The `ReferenceContextMenu` "Copy" action fires from a `contextmenu` event
+which may be rejected under `xvfb-run` in CI.
+
+**Fix:** If clipboard writes fail in E2E tests, fall back to
+`document.execCommand('copy')` (deprecated but functional in WebKit) or skip the
+clipboard assertion and only assert the menu dismissed.
+
+---
+
+## ISSUE-018 — Tantivy search-index directory should be in `.gitignore`
+
+**Status:** Open (2026-05-09)
+
+**Symptom:** The Tantivy index (`.notesapp/search-index/`) can grow large. It
+is rebuilt automatically if missing, so committing it serves no purpose.
+
+**Fix:** Add a README snippet recommending users add to their project's
+`.gitignore`:
+```
+.notesapp/search-index/
+```
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

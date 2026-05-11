@@ -187,8 +187,26 @@ export const config: WebdriverIO.Config = {
     const notesAppDir = path.join(testProjectDir, ".notesapp");
     fs.mkdirSync(notesDir, { recursive: true });
     fs.mkdirSync(notesAppDir, { recursive: true });
-    fs.mkdirSync(path.join(testProjectDir, "references"), { recursive: true });
+    const refsDir = path.join(testProjectDir, "references");
+    fs.mkdirSync(refsDir, { recursive: true });
     fs.mkdirSync(path.join(testProjectDir, "attachments"), { recursive: true });
+    // Phase 3 reference fixtures — a tiny valid PDF + a markdown reference
+    fs.writeFileSync(
+      path.join(refsDir, "paper.md"),
+      "# Reference Paper\n\nThis is a reference document for **search** testing.\n\nIt contains the keyword: _tantivy_.\n",
+    );
+    fs.writeFileSync(
+      path.join(refsDir, "tiny.pdf"),
+      Buffer.from(
+        "JVBERi0xLjQKMSAwIG9iago8PC9UeXBlIC9DYXRhbG9nIC9QYWdlcyAyIDAgUj4+CmVuZG9iagoy" +
+        "IDAgb2JqCjw8L1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDE+PgplbmRvYmoKMyAw" +
+        "IG9iago8PC9UeXBlIC9QYWdlIC9QYXJlbnQgMiAwIFIgL01lZGlhQm94IFswIDAgNjEyIDc5Ml0+" +
+        "PgplbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4g" +
+        "CjAwMDAwMDAwNTYgMDAwMDAgbiAKMDAwMDAwMDExMSAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUg" +
+        "NCAvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxODAKJSVFT0YK",
+        "base64",
+      ),
+    );
     // Create sample notes for testing the explorer and buffer switcher
     fs.writeFileSync(path.join(notesDir, "alpha.md"), "# Alpha Note\n\nThis is the alpha note.\n");
     fs.writeFileSync(path.join(notesDir, "beta.md"), "# Beta Note\n\nThis is the beta note.\n");

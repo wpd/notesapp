@@ -32,6 +32,8 @@ interface ShortcutOptions {
   onOpenFindFile: () => void;
   onModeSwitch: (tileId: string, mode: TileMode) => void;
   onQuit: () => void;
+  /** Open the sidebar and focus the search input (Ctrl/Cmd+Shift+F). */
+  onOpenSidebarSearch: () => void;
 }
 
 // Synchronously push DOM focus into the CodeMirror editor for a given tileId.
@@ -81,6 +83,7 @@ export function useKeyboardShortcuts({
   onOpenFindFile,
   onModeSwitch,
   onQuit,
+  onOpenSidebarSearch,
 }: ShortcutOptions): void {
   const prefixActive = useRef(false);
   // Track C-x n prefix (mode-switch chord)
@@ -130,29 +133,39 @@ export function useKeyboardShortcuts({
         ) {
           return;
         }
-        escPrefixActive.current = false;
-        // Ignore a second Esc (treat as prefix cancel, same as real Emacs C-g).
-        if (e.key === "Escape") return;
+        // If a Ctrl+key combination arrives (e.g. C-x after an accidental ESC),
+        // Esc+Ctrl+key is not a valid Emacs meta sequence — cancel the esc-prefix
+        // and fall through so the Ctrl+key is handled normally (e.g. C-x arms the
+        // C-x prefix). This matches real Emacs behaviour where C-g or another
+        // prefix key cancels a pending Esc-as-Meta.
+        if (e.ctrlKey || e.metaKey) {
+          escPrefixActive.current = false;
+          // fall through to normal Ctrl+key handling below
+        } else {
+          escPrefixActive.current = false;
+          // Ignore a second Esc (treat as prefix cancel, same as real Emacs C-g).
+          if (e.key === "Escape") return;
 
-        e.preventDefault();
-        e.stopPropagation();
-        {
-          const focused = layout.focusedTileId;
-          if (focused) {
-            const tile = layout.tiles[focused];
-            const entry = META_COMMANDS[e.key];
-            if (entry) {
-              if (tile?.mode === "preview") {
-                const ed = getWysiwygEditor(focused);
-                if (ed) entry.tt(ed);
-              } else {
-                const view = getEditorView(focused);
-                if (view) { entry.cm(view); view.focus(); }
+          e.preventDefault();
+          e.stopPropagation();
+          {
+            const focused = layout.focusedTileId;
+            if (focused) {
+              const tile = layout.tiles[focused];
+              const entry = META_COMMANDS[e.key];
+              if (entry) {
+                if (tile?.mode === "preview") {
+                  const ed = getWysiwygEditor(focused);
+                  if (ed) entry.tt(ed);
+                } else {
+                  const view = getEditorView(focused);
+                  if (view) { entry.cm(view); view.focus(); }
+                }
               }
             }
           }
+          return;
         }
-        return;
       }
 
       // ---- Ctrl+=/-/0 — per-tile font size (SPEC.md §4.1, §4.3) ----
@@ -184,6 +197,14 @@ export function useKeyboardShortcuts({
       if (e.ctrlKey && e.shiftKey && (e.key === "B" || e.key === "b")) {
         e.preventDefault();
         layout.toggleSidebar();
+        clearPrefix();
+        return;
+      }
+
+      // ---- Ctrl+Shift+F / Cmd+Shift+F — open sidebar + focus search ----
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "F" || e.key === "f")) {
+        e.preventDefault();
+        onOpenSidebarSearch();
         clearPrefix();
         return;
       }
@@ -347,7 +368,7 @@ export function useKeyboardShortcuts({
                 : tile.mode === "missing"
                   ? "editor"
                   : tile.mode === "reference"
-                    ? "reference-stub"
+                    ? "reference"
                     : tile.mode === "aichat"
                       ? "aichat-stub"
                       : "editor";
@@ -396,6 +417,15 @@ export function useKeyboardShortcuts({
           break;
         }
 
+        // C-x C-r — open reference picker on focused tile
+        case e.key === "r" && e.ctrlKey: {
+          e.preventDefault();
+          if (focused) {
+            onModeSwitch(focused, "reference");
+          }
+          break;
+        }
+
         // C-x N (1–9) — focus tile by reading-order index
         case /^[1-9]$/.test(e.key) && !e.ctrlKey: {
           e.preventDefault();
@@ -418,5 +448,5 @@ export function useKeyboardShortcuts({
     return () => {
       document.removeEventListener("keydown", handler, true);
     };
-  }, [onOpenBufferSwitcher, onOpenFindFile, onModeSwitch, onQuit]);
+  }, [onOpenBufferSwitcher, onOpenFindFile, onModeSwitch, onQuit, onOpenSidebarSearch]);
 }

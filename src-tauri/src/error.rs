@@ -14,6 +14,9 @@ pub enum AppError {
 
     #[error("Project error: {0}")]
     Project(String),
+
+    #[error("Search error: {0}")]
+    Search(String),
 }
 
 impl serde::Serialize for AppError {

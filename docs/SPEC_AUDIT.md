@@ -36,14 +36,14 @@ and layout shortcuts), §5.1 (editor-internal Emacs bindings), and §5.5
 | `C-x b` | Buffer switcher (modal by tile mode) | IMPLEMENTED | `useKeyboardShortcuts.ts:237` |
 | `C-x n n` | Mode → Editor | IMPLEMENTED | `useKeyboardShortcuts.ts:155` |
 | `C-x n p` | Mode → Preview (no-op on non-.md) | IMPLEMENTED | `useKeyboardShortcuts.ts:159` |
-| `C-x n r` | Mode → Reference | IMPLEMENTED (Phase 1 stub picker) | `useKeyboardShortcuts.ts:172`; full picker DEFERRED: ROADMAP.md Phase 3 |
+| `C-x n r` | Mode → Reference | IMPLEMENTED (Phase 3) | `useKeyboardShortcuts.ts`; opens real reference picker via `onModeSwitch` → `BufferSwitcher` `"reference"` mode |
 | `C-x n c` | Mode → AI Chat | IMPLEMENTED (Phase 1 stub picker) | `useKeyboardShortcuts.ts:176`; full picker DEFERRED: ROADMAP.md Phase 4 |
 | `C-x C-s` | Save current note | IMPLEMENTED | `useKeyboardShortcuts.ts:272`; `EditorPane.tsx:209` |
 | `C-x C-f` | Open note by name | IMPLEMENTED | `useKeyboardShortcuts.ts:291` |
-| `C-x C-r` | Open reference by name | MISSING | No handler. Tracked in ISSUES.md. |
+| `C-x C-r` | Open reference by name | IMPLEMENTED (Phase 3) | `useKeyboardShortcuts.ts` — `C-x C-r` arm calls `onModeSwitch(focused, "reference")`, opening the reference picker |
 | `C-x p` | Toggle pin on Editor tile | IMPLEMENTED | `useKeyboardShortcuts.ts:258` |
 | `Cmd+B` / `Ctrl+Shift+B` | Toggle activity sidebar | IMPLEMENTED (`Ctrl+Shift+B` only on Linux/Windows) | `useKeyboardShortcuts.ts:123`; `Cmd+B` is macOS-only and untested on current dev platform |
-| `Ctrl/Cmd+Shift+F` | Global project search | DEFERRED | ROADMAP.md Phase 3 |
+| `Ctrl/Cmd+Shift+F` | Global project search | IMPLEMENTED (Phase 3) | `useKeyboardShortcuts.ts` — opens sidebar + focuses Search input via `requestSidebarSearchFocus()` |
 | `C-x N` (1–9) | Focus tile by reading-order index | IMPLEMENTED | `useKeyboardShortcuts.ts:298`; `useKeyboardShortcuts.test.ts:96` |
 | `Ctrl/Cmd+=` | Increase font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:131`; `layoutStore.ts:incrementTileFontScale`; `useKeyboardShortcuts.test.ts:368` |
 | `Ctrl/Cmd+-` | Decrease font size of focused tile | IMPLEMENTED | `useKeyboardShortcuts.ts:136`; `layoutStore.ts:decrementTileFontScale`; `useKeyboardShortcuts.test.ts:373` |
@@ -85,6 +85,24 @@ and layout shortcuts), §5.1 (editor-internal Emacs bindings), and §5.5
 | Emacs motion bindings in WYSIWYG (C-f/b/n/p, C-a/e, M-f/b, M-<, M->, C-k, C-y, C-space, C-w, M-w, C-/, C-g, M-d, M-Backspace) | IMPLEMENTED | `src/editor/emacsKeymap.ts:EmacsKeymap`; `tests/unit/wysiwygEmacsKeymap.test.ts` (15 tests); E2E: `tests/e2e/wysiwyg.emacs.e2e.ts` |
 | Esc-prefix (Esc <, Esc >) dispatches to Tiptap when Preview tile is focused | IMPLEMENTED | `src/hooks/useKeyboardShortcuts.ts:META_COMMANDS`; `tests/unit/useKeyboardShortcuts.test.ts` (WYSIWYG Esc-prefix describe block) |
 | TAB heading-fold, S-TAB, org-mode table nav, keyboard macros, rectangles, incremental search in WYSIWYG | Editor-tile only — DEFERRED | ROADMAP.md Phase 5; scope boundary documented in SPEC.md §5.2 and SPEC_NOTES.md §8 |
+
+## §5.3 — Reference Tile (Phase 3)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| Reference tile mode in mosaic | IMPLEMENTED | `MosaicLayout.tsx` → `ReferencePane.tsx` |
+| PDF rendering (PDF.js, page nav, zoom, text layer) | IMPLEMENTED | `PdfReferenceView.tsx`; `public/pdfjs/pdf.worker.min.mjs` |
+| Page + zoom persisted to `layout.json` | IMPLEMENTED | `layoutStore.ts:pdfState`; `setTilePdfState` |
+| Markdown/TXT reference rendering (remark/rehype/KaTeX/Mermaid) | IMPLEMENTED | `MarkdownReferenceView.tsx` |
+| Right-click "Copy" (blockquote + citation footer) | IMPLEMENTED | `ReferenceContextMenu.tsx` |
+| Right-click "Highlight" (PDF sidecar) | IMPLEMENTED | `ReferenceContextMenu.tsx`; `commands/references.rs:write_pdf_annotations` |
+| "(N highlights)" badge in TileBar | IMPLEMENTED | `TileBar.tsx:isPdfReference`; `read_pdf_annotations` |
+| Reference picker (no `+ New` row) | IMPLEMENTED | `BufferSwitcher.tsx` mode `"reference"` |
+| OS-file drop → `import_reference` (Reference tiles only) | IMPLEMENTED | `MosaicLayout.tsx:onDrop`; ROADMAP.md Phase 3 Substitutions: Editor/Preview reject OS drops |
+| `references/` listed in activity sidebar References section | IMPLEMENTED | `SidebarReferencesSection.tsx` |
+| Full-text search (Tantivy) | IMPLEMENTED | `search/index.rs`; `commands/search.rs`; `SidebarSearchSection.tsx` |
+| `Ctrl/Cmd+Shift+F` opens sidebar + focuses search | IMPLEMENTED | `useKeyboardShortcuts.ts`; `layoutStore.ts:requestSidebarSearchFocus` |
+| PDF highlight visual overlay | DEFERRED (Phase 7) | ROADMAP.md Phase 3 Substitutions |
 
 ## §5.5 — Missing Tile
 

@@ -157,4 +157,45 @@ Actual clipboard integration requires macOS/WKWebView.
 
 ---
 
+## Phase 3: PDF.js Worker Load Verification
+
+**Goal:** Confirm the PDF.js web worker loads correctly under WKWebView.
+
+**Steps:**
+1. Open the app on macOS.
+2. Open a Reference tile and bind it to a `.pdf` file.
+3. Open Safari's Web Inspector → Console while the PDF loads.
+
+**Expected:** No worker-load errors in the console. The PDF renders with a
+page count indicator in the navigation bar.
+
+**Why not automated:** The asset URL resolution for `asset://localhost/...`
+may differ between WebKitGTK (Linux) and WKWebView (macOS). The console error
+only appears in the real macOS runtime. See ISSUE-015 and `COMPAT.md`.
+
+---
+
+## Phase 3: Real Finder Drag into References Sidebar
+
+**Goal:** Confirm that dragging a PDF or markdown file from the macOS Finder
+into the References sidebar section imports it into `references/`.
+
+**Steps:**
+1. Open a project in the app.
+2. Open the sidebar References section.
+3. Drag a PDF file from the Finder and drop it onto the References section.
+4. Observe: a) the file appears in the references list; b) the file exists
+   in `<project>/references/` in the Finder.
+
+**Expected:** File is imported (copied) to `references/`, list refreshes,
+no modal errors.
+
+**Why not automated:** The macOS Finder drag uses the OS-level drag-and-drop
+layer (`NSFilePromiseProvider`). WebDriver cannot inject a Finder drag event
+reliably. HTML `DataTransfer.files` in the drop handler works only for
+browser-originated drops, not Finder drags. Requires physical or
+Accessibility-API-driven testing.
+
+---
+
 *This document was co-authored with [Claude](https://www.anthropic.com/claude) (Anthropic). Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*

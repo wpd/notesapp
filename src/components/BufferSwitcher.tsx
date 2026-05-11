@@ -12,7 +12,7 @@ export type PickerMode =
   | "editor" // Editor buffer picker: all text files + New note
   | "preview" // Preview buffer picker: .md only + New note
   | "find-file" // C-x C-f: same as editor picker but with Create option
-  | "reference-stub" // Phase 1 stub for Reference mode
+  | "reference" // Reference buffer picker: files from references/ dir, no New row
   | "aichat-stub"; // Phase 1 stub for AI Chat mode
 
 interface BufferSwitcherProps {
@@ -45,18 +45,24 @@ export default function BufferSwitcher({
 
   const effectiveTileId = targetTileId ?? focusedTileId;
 
-  const isStub =
-    pickerMode === "reference-stub" || pickerMode === "aichat-stub";
+  const isStub = pickerMode === "aichat-stub";
+  const isReference = pickerMode === "reference";
 
-  // Load notes list — for editor/find-file, load all text files; for preview, .md only
+  // Load notes/references list based on picker mode
   useEffect(() => {
     if (!projectDir) return;
+    if (isReference) {
+      invoke<NoteEntry[]>("list_references", { projectDir })
+        .then(setAllNotes)
+        .catch(() => setAllNotes([]));
+      return;
+    }
     const cmd =
       pickerMode === "preview" ? "list_notes" : "list_notes_all";
     invoke<NoteEntry[]>(cmd, { path: projectDir })
       .then(setAllNotes)
       .catch(() => setAllNotes(notes));
-  }, [projectDir, pickerMode, notes]);
+  }, [projectDir, pickerMode, isReference, notes]);
 
   // Filter notes by query
   const filtered: NoteEntry[] = query.trim()
@@ -72,10 +78,12 @@ export default function BufferSwitcher({
     allNotes.some(
       (n) => n.name.toLowerCase() === trimmedQuery.toLowerCase(),
     );
+  // Reference picker never shows create/new rows — references are imported, not created
   const showCreateOption =
-    trimmedQuery.length > 0 && !hasExactMatch && !!projectDir;
+    !isReference && trimmedQuery.length > 0 && !hasExactMatch && !!projectDir;
   // Always show "+ New note…" as the first item when query is empty
-  const showNewNoteTop = trimmedQuery.length === 0 && !!projectDir;
+  const showNewNoteTop =
+    !isReference && trimmedQuery.length === 0 && !!projectDir;
   const rowCount =
     filtered.length +
     (showCreateOption ? 1 : 0) +
@@ -97,21 +105,24 @@ export default function BufferSwitcher({
         return;
       }
 
-      // Load file into Y.Doc if not already loaded
-      const ydoc = getOrCreateYDoc(note.path);
-      const ytext = ydoc.getText("content");
-      if (ytext.length === 0) {
-        try {
-          const content = await invoke<string>("read_note", {
-            path: note.path,
-          });
-          ydoc.transact(() => {
-            if (ytext.length === 0) {
-              ytext.insert(0, content);
-            }
-          });
-        } catch {
-          // New or unreadable file — open blank
+      // Reference files are read by ReferencePane directly — skip Y.Doc loading
+      if (!isReference) {
+        // Load file into Y.Doc if not already loaded
+        const ydoc = getOrCreateYDoc(note.path);
+        const ytext = ydoc.getText("content");
+        if (ytext.length === 0) {
+          try {
+            const content = await invoke<string>("read_note", {
+              path: note.path,
+            });
+            ydoc.transact(() => {
+              if (ytext.length === 0) {
+                ytext.insert(0, content);
+              }
+            });
+          } catch {
+            // New or unreadable file — open blank
+          }
         }
       }
 
@@ -136,6 +147,7 @@ export default function BufferSwitcher({
     },
     [
       effectiveTileId,
+      isReference,
       targetMode,
       requestSetTileFile,
       persistLayout,
@@ -224,10 +236,9 @@ export default function BufferSwitcher({
     }
   };
 
-  // Phase 1 stubs for Reference and AI Chat — rendered after all hooks
+  // Phase 1 stub for AI Chat — rendered after all hooks
   if (isStub) {
-    const label =
-      pickerMode === "reference-stub" ? "Reference" : "AI Chat";
+    const label = "AI Chat";
     return (
       <div
         data-testid="buffer-switcher-overlay"
@@ -282,7 +293,11 @@ export default function BufferSwitcher({
   }
 
   const placeholderText =
-    pickerMode === "preview" ? "Open markdown note…" : "Open note…";
+    pickerMode === "preview"
+      ? "Open markdown note…"
+      : pickerMode === "reference"
+        ? "Open reference document…"
+        : "Open note…";
 
   return (
     <div

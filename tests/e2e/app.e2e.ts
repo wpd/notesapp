@@ -2849,3 +2849,194 @@ describe("WYSIWYG drawing block insertion (C-c d)", function () {
     expect(filenameAfter).toBe(originalFilename);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Reference tile + Sidebar sections
+// ---------------------------------------------------------------------------
+
+/** Reset any reference tiles back to editor mode via the Zustand store. */
+async function resetReferenceTilesToEditor() {
+  await dismissOpenOverlays();
+  await browser.execute(() => {
+    const fn = (
+      window as Window & {
+        __notesapp_layout__?: () => {
+          tiles: Record<string, { mode: string }>;
+          setTileMode: (id: string, mode: string) => void;
+        };
+      }
+    ).__notesapp_layout__;
+    if (!fn) return;
+    const { tiles, setTileMode } = fn();
+    for (const [id, t] of Object.entries(tiles)) {
+      if ((t as { mode: string }).mode === "reference") {
+        setTileMode(id, "editor");
+      }
+    }
+  });
+  await browser.pause(300);
+}
+
+describe("Reference picker (C-x n r)", () => {
+  afterEach(async () => {
+    await resetReferenceTilesToEditor();
+  });
+
+  async function openReferencePicker() {
+    await dismissOpenOverlays();
+    await clickFirstTile();
+    await browser.pause(200);
+    await clickById("app-root");
+    await browser.pause(300);
+    // C-x n r chord
+    await browser.action('key')
+      .down(KEY.CTRL).down('x').up('x').up(KEY.CTRL).perform();
+    await browser.pause(200);
+    await browser.action('key').down('n').up('n').perform();
+    await browser.pause(200);
+    await browser.action('key').down('r').up('r').perform();
+    await browser.pause(600);
+    return waitForId("buffer-switcher", 5000);
+  }
+
+  it("C-x n r opens the buffer switcher in reference mode", async () => {
+    const switcher = await openReferencePicker();
+    await expect(switcher).toBeDisplayed();
+    await browser.action('key').down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(300);
+  });
+
+  it("reference picker lists paper.md from references/", async () => {
+    await openReferencePicker();
+    const item = await waitForId("buffer-item-paper.md", 4000);
+    await expect(item).toBeDisplayed();
+    await browser.action('key').down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(300);
+  });
+
+  it("reference picker has no '+ New note…' row", async () => {
+    await openReferencePicker();
+    const newTop = await $('//*[@data-testid="buffer-new-note-top"]');
+    expect(await newTop.isExisting()).toBe(false);
+    await browser.action('key').down(KEY.ESC).up(KEY.ESC).perform();
+    await browser.pause(300);
+  });
+
+  it("pressing Enter binds the reference and closes picker", async () => {
+    await openReferencePicker();
+    // Filter to paper.md and press Enter
+    const input = await byId("buffer-switcher-input");
+    await input.setValue("paper");
+    await browser.pause(300);
+    await browser.action('key').down(KEY.RETURN).up(KEY.RETURN).perform();
+    await browser.pause(800);
+
+    // Switcher should close
+    const switcher = await $('//*[@data-testid="buffer-switcher"]');
+    await switcher.waitForDisplayed({ timeout: 2000, reverse: true });
+
+    // Focused tile should now be reference mode
+    const refTile = await $('//*[@data-tile-mode="reference"]');
+    await refTile.waitForExist({ timeout: 4000 });
+    await expect(refTile).toBeDisplayed();
+  });
+});
+
+describe("Sidebar References section", () => {
+  beforeEach(async () => {
+    await dismissOpenOverlays();
+    await browser.pause(200);
+  });
+
+  afterEach(async () => {
+    await resetReferenceTilesToEditor();
+  });
+
+  it("References section toggle opens and shows paper.md", async () => {
+    // Make sidebar visible
+    const sidebar = await waitForId("activity-sidebar", 3000);
+    await expect(sidebar).toBeDisplayed();
+
+    // Click References toggle to open it
+    const toggle = await waitForId("sidebar-references-toggle", 3000);
+    await toggle.click();
+    await browser.pause(400);
+
+    // paper.md should appear in the list
+    const refItem = await waitForId("sidebar-ref-paper.md", 3000);
+    await expect(refItem).toBeDisplayed();
+  });
+
+  it("clicking a reference item switches the focused tile to reference mode", async () => {
+    // Ensure References section is open
+    const toggle = await byId("sidebar-references-toggle");
+    const isExpanded = await toggle.getAttribute("aria-expanded");
+    if (isExpanded !== "true") {
+      await toggle.click();
+      await browser.pause(400);
+    }
+
+    // Focus an editor tile first
+    await focusFirstTileOfTypeViaStore("editor");
+
+    // Click paper.md in the sidebar
+    const refItem = await waitForId("sidebar-ref-paper.md", 3000);
+    await refItem.click();
+    await browser.pause(600);
+
+    // The tile should now be reference mode
+    const refTile = await $('//*[@data-tile-mode="reference"]');
+    await refTile.waitForExist({ timeout: 3000 });
+    await expect(refTile).toBeDisplayed();
+  });
+});
+
+describe("Sidebar Search section", () => {
+  beforeEach(async () => {
+    await dismissOpenOverlays();
+    await browser.pause(200);
+  });
+
+  it("Search section toggle opens and shows input", async () => {
+    const sidebar = await waitForId("activity-sidebar", 3000);
+    await expect(sidebar).toBeDisplayed();
+
+    // Open Search section
+    const toggle = await waitForId("sidebar-search-toggle", 3000);
+    await toggle.click();
+    await browser.pause(400);
+
+    const input = await waitForId("sidebar-search-input", 3000);
+    await expect(input).toBeDisplayed();
+  });
+
+  it("Ctrl+Shift+F opens sidebar and focuses search input", async () => {
+    await clickById("app-root");
+    await browser.pause(200);
+
+    await sendCtrlShift("f");
+    await browser.pause(500);
+
+    const input = await waitForId("sidebar-search-input", 3000);
+    await expect(input).toBeDisplayed();
+  });
+
+  it("typing in search shows results from notes", async () => {
+    // Ensure Search section is open and focused
+    const toggle = await byId("sidebar-search-toggle");
+    const isExpanded = await toggle.getAttribute("aria-expanded");
+    if (isExpanded !== "true") {
+      await toggle.click();
+      await browser.pause(400);
+    }
+
+    const input = await waitForId("sidebar-search-input", 3000);
+    await input.setValue("alpha");
+    await browser.pause(600); // wait for debounce + search
+
+    // Should show at least one result
+    const firstHit = await $('//*[@data-testid="search-hit-0"]');
+    await firstHit.waitForExist({ timeout: 5000 });
+    await expect(firstHit).toBeDisplayed();
+  });
+});

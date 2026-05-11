@@ -382,7 +382,7 @@ function AppShell(): React.ReactElement {
     (tileId: string, mode: TileMode) => {
       if (mode === "reference") {
         setSwitcherState({
-          pickerMode: "reference-stub",
+          pickerMode: "reference",
           targetTileId: tileId,
           targetMode: mode,
         });
@@ -421,7 +421,7 @@ function AppShell(): React.ReactElement {
         tile.mode === "preview"
           ? "preview"
           : tile.mode === "reference"
-            ? "reference-stub"
+            ? "reference"
             : tile.mode === "aichat"
               ? "aichat-stub"
               : "editor";
@@ -542,6 +542,9 @@ function AppShell(): React.ReactElement {
     onOpenFindFile: handleOpenFindFile,
     onModeSwitch: handleModeSwitch,
     onQuit: () => { void requestAppQuit(); },
+    onOpenSidebarSearch: () => {
+      useLayoutStore.getState().requestSidebarSearchFocus();
+    },
   });
 
   return (

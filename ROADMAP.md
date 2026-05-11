@@ -454,38 +454,59 @@ These items were identified during the Phase 2 completion audit
 
 ---
 
-## Phase 3 — Reference Tile + Full-Text Search
+## Phase 3 — Reference Tile + Full-Text Search ✓ COMPLETE
 
 **Goal:** A Reference tile that browses and renders PDFs and markdown
 reference documents. Full-text search across all notes and references
 via Tantivy.
 
-### Phase 3 Substitutions
+### Phase 3 Substitutions of Spec'd Behavior
 
-- `C-x n r` stops being a no-op / placeholder and does what SPEC.md
-  §4.0.1 requires: it sets the current tile to Reference mode and
-  opens the Reference picker.
+- **PDF highlight overlay deferred to Phase 7.** Phase 3 persists
+  `.pdf.annotations` sidecar JSON and surfaces a count badge in the
+  tile title bar; the visual yellow rectangle overlay ships in Phase 7
+  ("Full PDF annotation").
+- **"Copy → AI Chat user message" is unimplemented.** Phase 4 has no AI
+  Chat tile yet. The right-click context menu's "Copy to AI Chat" item
+  is omitted entirely (not greyed out). The "Copy → Editor/Preview
+  blockquote with citation footer" path is implemented.
+- **Tantivy schema migrations are not implemented.** `notesapp_meta.json`
+  carries a `schema_version`; any mismatch triggers a full rebuild.
+- **PDF worker hosted at `/pdfjs/pdf.worker.min.mjs`** (vendored from
+  `pdfjs-dist` at install time via a postinstall-style copy).
 
 ### Deliverables
-- [ ] Reference tile mode
-- [ ] PDF rendering via PDF.js (page navigation, zoom, text selection, copy)
-- [ ] Markdown reference rendering (same remark/rehype pipeline, read-only)
-- [ ] Fuzzy file picker for reference documents (same style as buffer switcher,
-      no `+ New` option per SPEC.md §5.3)
-- [ ] Drag-and-drop into Reference tile imports file into `references/`
-- [ ] Text selection → right-click → "Copy" / "Highlight"
-  - Copy into editor/preview: inserts as blockquote with citation footer
-- [ ] PDF annotation sidecar files (`.pdf.annotations`)
-- [ ] Tantivy search index (Rust backend): indexes all notes + reference text
-- [ ] Activity sidebar Search section: full-text search across all files
-- [ ] Activity sidebar References section: flat list of all files in
-      `references/`
-- [ ] `Ctrl+Shift+F` global project search
-- [ ] PDF text extraction for indexing (`pdfium` or `pdf-extract`)
-- [ ] All prior tests continue to pass; new tests for search and
-      reference rendering, and for `Missing` mode's "Locate…" action
-      correctly scoping to `references/` when the broken binding
-      refers to a reference file
+- [x] Reference tile mode (`ReferencePane.tsx`, `MarkdownReferenceView.tsx`,
+      `PdfReferenceView.tsx`)
+- [x] PDF rendering via PDF.js (page navigation n/p, zoom Cmd+=/-/0, text
+      selection, page + zoom persisted to `layout.json`)
+- [x] Markdown reference rendering (remark/rehype/KaTeX/Mermaid pipeline,
+      read-only)
+- [x] Reference picker (`BufferSwitcher` `"reference"` mode): lists
+      `references/` files, no `+ New` row, Enter binds
+- [x] Drag-and-drop into Reference tile imports file into `references/`
+      via `import_reference` Tauri command
+- [x] Text selection → right-click → "Copy" (blockquote + citation footer
+      with `— filename [p. N]`) / "Highlight" (PDF sidecar)
+- [x] PDF annotation sidecar files (`.pdf.annotations` JSON)
+- [x] "(N highlights)" badge in tile title bar for bound PDFs
+- [x] Tantivy full-text search index (Rust) — schema: path/kind/title/body/modified
+- [x] Activity sidebar Search section: debounced full-text search,
+      grouped by kind, click-to-open in focused tile
+- [x] Activity sidebar References section: flat list, OS-drop import,
+      drag-source `text/notesapp-path`
+- [x] `Ctrl/Cmd+Shift+F` — opens sidebar + focuses search input
+- [x] `C-x n r` — switches focused tile to Reference and opens picker
+- [x] `C-x C-r` — opens Reference picker on focused tile (mode-switching)
+- [x] PDF text extraction for indexing (`pdf-extract` crate)
+- [x] Incremental index updates on file-watcher events
+- [x] Background full reindex on project open if index missing/stale
+- [x] OS-file drop accepted only on Reference tiles and Missing tiles
+      whose `missingPath` is under `references/` (Editor/Preview/AI Chat
+      tiles reject OS drops)
+- [x] Activity sidebar refactored to three collapsible sections:
+      Explorer / Search / References
+- [x] All prior tests continue to pass (88 Rust + 381 Vitest unit tests)
 
 ---
 

@@ -16,6 +16,10 @@ const NOTESAPP_DIR: &str = ".notesapp";
 const PROJECT_TOML: &str = "project.toml";
 const FIRST_NOTE: &str = "untitled.md";
 
+/// Subdirectory under `.notesapp/` for the Tantivy full-text search index.
+/// Not created by `scaffold_project` — built lazily on first project open.
+pub const SEARCH_INDEX_SUBDIR: &str = "search-index";
+
 /// Classification of a `NOTESAPP_PROJECT_DIR` path per SPEC.md §6.1.1.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProjectDirCase {

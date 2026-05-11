@@ -139,10 +139,20 @@ describe("BufferSwitcher", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("reference-stub shows placeholder message", () => {
-    render(<BufferSwitcher onClose={() => {}} pickerMode="reference-stub" />);
-    expect(screen.getByTestId("buffer-switcher-stub")).toBeInTheDocument();
-    expect(screen.getByText("Reference mode is not yet available.")).toBeInTheDocument();
+  it("reference picker shows switcher dialog without New rows", async () => {
+    const invokeMock = getInvokeMock();
+    const MOCK_REFS = [
+      { path: "/project/references/paper.pdf", name: "paper.pdf" },
+    ];
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_references") return Promise.resolve(MOCK_REFS);
+      return Promise.resolve([]);
+    });
+    render(<BufferSwitcher onClose={() => {}} pickerMode="reference" />);
+    expect(screen.getByTestId("buffer-switcher")).toBeInTheDocument();
+    // No "New note" row in reference mode
+    await waitFor(() => expect(screen.queryByTestId("buffer-new-note-top")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("buffer-create-new")).not.toBeInTheDocument();
   });
 
   it("aichat-stub shows placeholder message", () => {

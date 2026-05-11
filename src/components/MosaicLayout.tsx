@@ -7,11 +7,14 @@ import { Mosaic, MosaicWindow, MosaicNode } from "react-mosaic-component";
 import "react-mosaic-component/react-mosaic-component.css";
 
 import useLayoutStore from "../stores/layoutStore";
+import useProjectStore from "../stores/projectStore";
 import TileBar from "./TileBar";
 import EditorPane from "./EditorPane";
 import WysiwygPane from "./WysiwygPane";
 import MissingTile from "./MissingTile";
+import ReferencePane from "./ReferencePane";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { invoke } from "@tauri-apps/api/core";
 
 interface TileContentProps {
   tileId: string;
@@ -59,6 +62,7 @@ function TileContent({
         />
       );
     case "reference":
+      return <ReferencePane tileId={tileId} filePath={tile.filePath} />;
     case "aichat":
       return (
         <div
@@ -73,8 +77,7 @@ function TileContent({
             fontFamily: "var(--font-prose)",
           }}
         >
-          {tile.mode === "reference" ? "Reference" : "AI Chat"} tile
-          — coming in a future phase.
+          AI Chat tile — coming in a future phase.
         </div>
       );
     default:
@@ -202,6 +205,40 @@ export default function MosaicLayout({
                         }
                       })
                       .catch(() => {});
+                    return;
+                  }
+
+                  // OS file drop (from the filesystem, not the sidebar).
+                  // Only accepted by Reference tiles and Missing tiles whose
+                  // broken binding was under references/ (SPEC.md §5.3).
+                  const files = e.dataTransfer.files;
+                  if (files.length > 0 && tile) {
+                    const isMissingRef =
+                      tile.mode === "missing" &&
+                      (tile.missingPath ?? "").includes("/references/");
+                    if (tile.mode === "reference" || isMissingRef) {
+                      e.preventDefault();
+                      const projectDir =
+                        useProjectStore.getState().projectDir;
+                      if (!projectDir) return;
+                      // Tauri exposes the OS path via the file's name property
+                      // when running under the asset protocol. For WebKitGTK we
+                      // can read the path from dataTransfer text.
+                      const osPath =
+                        e.dataTransfer.getData("text/plain") ||
+                        (files[0] as File & { path?: string }).path ||
+                        "";
+                      if (!osPath) return;
+                      invoke<{ name: string; path: string }>(
+                        "import_reference",
+                        { projectDir, srcPath: osPath },
+                      )
+                        .then((entry) => {
+                          setTileMode(id, "reference");
+                          setTileFile(id, entry.path);
+                        })
+                        .catch(() => {});
+                    }
                   }
                 }}
                 style={{ height: "100%", overflow: "hidden" }}

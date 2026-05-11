@@ -5,6 +5,7 @@
 pub mod commands;
 pub mod error;
 pub mod fs;
+pub mod search;
 pub mod watcher;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -13,12 +14,23 @@ mod linux_spell;
 
 pub use error::AppError;
 
+/// Tauri-managed state for the full-text search index.
+///
+/// Initialized to `None` at startup; populated by `start_file_watcher` once
+/// a project directory is opened. All search commands read from this state.
+pub struct SearchState(
+    pub std::sync::Arc<std::sync::Mutex<Option<search::SearchIndex>>>,
+);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]
     macos::disable_smart_substitutions();
 
     tauri::Builder::default()
+        .manage(SearchState(std::sync::Arc::new(
+            std::sync::Mutex::new(None),
+        )))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(
@@ -51,6 +63,17 @@ pub fn run() {
             commands::drawings::list_drawings,
             commands::drawings::next_drawing_number,
             commands::drawings::drawing_path,
+            // Phase 3: Reference tile
+            commands::references::list_references,
+            commands::references::read_reference,
+            commands::references::import_reference,
+            commands::references::read_pdf_annotations,
+            commands::references::write_pdf_annotations,
+            // Phase 3: Full-text search
+            commands::search::search_project,
+            commands::search::search_notes,
+            commands::search::search_references,
+            commands::search::reindex_all,
         ])
         .on_page_load(|window, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
@@ -63,10 +86,6 @@ pub fn run() {
                     Ok(dir) => {
                         println!("NOTESAPP_PRELOAD: dir={}", dir);
                         let path = std::path::PathBuf::from(&dir);
-                        // Try to open the project.  On success, preload notes.
-                        // On error, preload the error message so the frontend
-                        // can skip invoke("open_project") entirely and show
-                        // the chooser immediately (no IPC round-trip needed).
                         let preload_json = match crate::fs::open_project_for_preload(&path) {
                             Ok(notes) => {
                                 println!("NOTESAPP_PRELOAD: {} notes found", notes.len());
