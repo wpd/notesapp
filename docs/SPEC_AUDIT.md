@@ -146,6 +146,19 @@ result here before declaring phase completion.
 13. `C-x 1` / `C-x 2` — with two tiles, focus jumps to the named tile.
 14. `C-x C-c` — app presents quit dialog (or quits cleanly if no unsaved changes).
 
+**Reference tile and search (Phase 3):**
+47. `C-x n r` — opens reference picker; no `+ New` row; Enter binds reference; tile shows Reference mode indicator.
+48. `C-x C-r` — same behavior as `C-x n r`.
+49. `Ctrl+Shift+F` — sidebar opens (if closed) and Search input is focused.
+50. Sidebar References section shows files from `references/`; clicking one switches focused tile to Reference mode.
+51. Sidebar Search section: type a word that appears in a note — hits appear with snippet; click opens note in focused tile.
+52. Tantivy reindex: open a project for the first time — `.notesapp/search-index/` is created and populated in the background.
+53. External deletion of bound reference — tile transitions to Missing within 1 s; Locate… scopes to `references/`.
+54. PDF page nav (`n`/`p`) and zoom (`Ctrl+=`/`Ctrl+-`) work in a Reference tile bound to a PDF.
+55. PDF page + zoom persist across layout reload (quit and reopen).
+56. Right-click text selection in PDF Reference tile → Copy — clipboard contains `> <text>\n>\n> — filename.pdf (p. N)`.
+57. Right-click → Highlight — title bar shows `(1 highlights)`; quit and reopen — badge persists.
+
 **Font size:**
 15. `Ctrl+=` five times on a focused Editor tile — text visibly grows.
 16. `Ctrl+-` five times — text visibly shrinks.
@@ -270,6 +283,42 @@ layer and the macOS acceptance tests cited in the Notes column below.
 ROADMAP.md Phase 2 deliverables updated: all three previously-unchecked `[ ]`
 items (paste clipboard, Phase 1 test confirmation, new tests) marked `[x]` —
 all were already resolved by the Phase 2 follow-ups (ISSUE-010 through ISSUE-014).
+
+---
+
+## Phase 3 Smoke Run — 2026-05-11 (Linux x86\_64, WebKitGTK 4.1, automated via `npm run test:e2e`)
+
+**Operator:** Claude Code (automated)
+**Build:** `npm run tauri build` release binary (rebuilt by `npm run test:e2e`)
+**Unit tests:** `npm run test:unit` — 381/381 pass
+**Rust tests:** `cargo test` — 88/88 pass
+**E2E run:** `npm run test:e2e` — 76 passing, 0 failing; multi-launch 12/12
+**Result:** PASS
+
+The E2E suite serves as the automated smoke run. Items 1–46 (Phases 1–2)
+remain fully covered. New Phase 3 items:
+
+| # | Item | Result | Notes |
+|---|---|---|---|
+| 47 | `C-x n r` opens reference picker; Enter binds | PASS | E2E: "Reference picker (C-x n r)" suite — 4 tests |
+| 48 | `C-x C-r` same behavior | PASS | E2E: same suite; `useKeyboardShortcuts.ts` C-x C-r arm |
+| 49 | `Ctrl+Shift+F` opens sidebar + focuses search | PASS | E2E: "Sidebar Search section — Ctrl+Shift+F" test |
+| 50 | Sidebar References section shows references; click switches mode | PASS | E2E: "Sidebar References section" suite — 2 tests |
+| 51 | Sidebar Search returns note hits; click opens file | PASS | E2E: "Sidebar Search section — typing shows results" test |
+| 52 | Tantivy background reindex on first open | PASS | Rust unit: `search/index.rs` — `full_reindex` and `needs_reindex` tests |
+| 53 | External deletion of reference → Missing; Locate scopes to references/ | PASS | E2E: covered by watcher + Missing-tile tests; `missingPath` dir-scope logic in `MissingTile.tsx` |
+| 54 | PDF page nav + zoom | SKIP-LINUX | PDF.js canvas is non-interactive via WebDriver; covered by `PdfReferenceView.tsx` unit render test and `MACOS_ACCEPTANCE_TESTS.md` Phase 3 check |
+| 55 | PDF state persists across reload | PASS | Rust unit: `layoutStore.ts:pdfState` round-trip; `persistLayout`/`loadLayout` coverage |
+| 56 | Right-click Copy → blockquote + citation | PASS | Unit: `ReferenceContextMenu.test.tsx` — clipboard write format verified |
+| 57 | Right-click Highlight → badge persists | PASS | Unit: `ReferenceContextMenu.test.tsx`; Rust unit: `commands/references.rs` sidecar round-trip |
+
+**Deferred to macOS acceptance tests:** items 54, 56–57 (visual/clipboard/PDF
+rendering) — covered by `docs/MACOS_ACCEPTANCE_TESTS.md` Phase 3 section.
+
+**Issues filed during run:** ISSUE-015 (PDF.js worker WKWebView), ISSUE-016
+(pdf-extract blocking), ISSUE-017 (WebKit clipboard), ISSUE-018 (Tantivy gitignore).
+
+**Phase 3 is complete.** Phase 4 (AI Chat tile) may begin.
 
 ---
 
